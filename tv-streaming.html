@@ -1,0 +1,1039 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BuzzCelebDaily TV - Live Streaming</title>
+    <!-- HLS.js for cross-browser stream compatibility -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <!-- Google IMA SDK for Video Ads -->
+    <script src="//imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
+    <style>
+        :root {
+            --primary: #db2777; /* Brand Pink */
+            --primary-dark: #be185d;
+            --bg-body: #f3f4f6;
+            --bg-card: #ffffff;
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
+            --border: #e5e7eb;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --radius: 12px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            line-height: 1.5;
+        }
+
+        /* --- Layout --- */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: -0.025em;
+        }
+
+        h1 span {
+            color: var(--primary);
+        }
+
+        /* --- Ad Spaces --- */
+        .ad-banner-top {
+            width: 100%;
+            height: 90px;
+            background-color: #e5e7eb;
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #9ca3af;
+            font-size: 14px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            margin-bottom: 30px;
+            border: 1px dashed #d1d5db;
+        }
+
+        .ad-sidebar {
+            width: 300px;
+            height: 600px;
+            background-color: #e5e7eb;
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #9ca3af;
+            font-weight: bold;
+            border: 1px dashed #d1d5db;
+            flex-shrink: 0;
+        }
+
+        /* --- Video Player Section --- */
+        .player-wrapper {
+            width: 100%;
+            background: #000;
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            margin-bottom: 30px;
+            position: relative;
+            aspect-ratio: 16 / 9;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            cursor: pointer;
+        }
+
+        /* IMA Ad Container */
+        #adContainer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 100;
+            display: none; /* Hidden by default */
+        }
+
+        /* Custom Controls */
+        .custom-controls {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 30;
+        }
+
+        .custom-controls.show {
+            opacity: 1;
+        }
+
+        .control-btn {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            padding: 8px; /* Larger touch target */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.9;
+            transition: opacity 0.2s;
+            min-width: 44px; /* Minimum touch target size */
+            min-height: 44px;
+        }
+
+        .control-btn:active {
+            opacity: 0.6;
+            transform: scale(0.95);
+        }
+
+        .volume-group {
+            display: flex; 
+            align-items: center; 
+            gap: 5px;
+        }
+
+        .volume-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 80px;
+            overflow: hidden;
+            transition: width 0.3s ease;
+        }
+        
+        .volume-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 2px;
+            outline: none;
+        }
+
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px; /* Larger thumb */
+            height: 14px;
+            background: white;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .progress-container {
+            flex: 1;
+            height: 4px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+            position: relative;
+            cursor: default;
+        }
+
+        .progress-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            background: var(--primary);
+            width: 100%; /* Full for live */
+            border-radius: 2px;
+        }
+
+        .live-badge {
+            background: #ef4444;
+            color: white;
+            font-size: 10px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 10px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+
+        .live-dot {
+            width: 4px;
+            height: 4px;
+            background: white;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Overlays */
+        .player-placeholder {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(to bottom right, #1f2937, #111827);
+            color: white;
+            z-index: 10;
+        }
+
+        .player-loader {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            display: none; /* Flex when loading */
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            color: white;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: var(--primary);
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .now-playing-info {
+            padding: 15px;
+            background: white;
+            border-radius: var(--radius);
+            margin-top: -15px; /* Pull up slightly */
+            margin-bottom: 30px;
+            box-shadow: var(--shadow);
+            position: relative;
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            display: none; /* Hidden until play */
+        }
+
+        .channel-badge {
+            background: var(--primary);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        /* --- Controls & Filters --- */
+        .controls-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 25px;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .filters {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding-bottom: 5px;
+            -webkit-overflow-scrolling: touch; /* Smooth scroll on iOS */
+        }
+
+        .filter-btn {
+            background: white;
+            border: 1px solid var(--border);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .filter-btn:hover, .filter-btn:active {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .filter-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .search-box {
+            position: relative;
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .search-box input {
+            padding: 10px 15px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            width: 100%;
+            outline: none;
+            font-size: 14px;
+        }
+
+        .search-box input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(219, 39, 119, 0.1);
+        }
+
+        /* --- Main Content Grid --- */
+        .content-layout {
+            display: flex;
+            gap: 30px;
+            align-items: start;
+        }
+
+        .channel-grid {
+            flex: 1;
+            display: grid;
+            /* Optimized for mobile: minimum 160px width allows 2 columns on most phones */
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 20px;
+        }
+
+        /* --- Channel Card --- */
+        .card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+            border: 1px solid transparent;
+            display: flex;
+            flex-direction: column;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .card:hover, .card:active {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            border-color: var(--primary);
+        }
+
+        .card-img-top {
+            width: 100%;
+            height: 100px; /* Smaller height for better mobile density */
+            background: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 15px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .card-img-top img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .card-body {
+            padding: 12px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-category {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--primary);
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            color: var(--text-main);
+            line-height: 1.2;
+        }
+
+        .card-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .play-overlay {
+            margin-top: 10px;
+            background: var(--bg-body);
+            color: var(--text-main);
+            text-align: center;
+            padding: 6px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        .card:hover .play-overlay {
+            background: var(--primary);
+            color: white;
+        }
+
+        /* In-feed Ad Card */
+        .ad-card-feed {
+            grid-column: span 1;
+            background: #e5e7eb;
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #9ca3af;
+            font-weight: bold;
+            min-height: 200px;
+            border: 1px dashed #d1d5db;
+            font-size: 12px;
+        }
+
+        /* --- Footer --- */
+        .footer-info {
+            margin-top: 50px;
+            padding-top: 30px;
+            border-top: 1px solid var(--border);
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        /* --- Responsive Queries --- */
+        @media (min-width: 769px) {
+            .player-wrapper:hover .custom-controls {
+                opacity: 1;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .content-layout {
+                flex-direction: column;
+            }
+            
+            /* Stack controls on mobile */
+            .controls-bar {
+                flex-direction: column-reverse; 
+                gap: 15px;
+            }
+            .search-box, .filters {
+                width: 100%;
+            }
+            
+            /* Prevent zoom on inputs */
+            .search-box input {
+                font-size: 16px; 
+            }
+
+            /* Move sidebar ad to top for visibility or remove */
+            .ad-sidebar {
+                width: 100%;
+                height: 250px;
+                order: -1; 
+                margin-bottom: 20px;
+            }
+
+            /* Adjust Player Controls */
+            .custom-controls {
+                padding: 10px;
+            }
+            
+            /* Hide volume slider on mobile to save space */
+            .volume-group {
+                display: none;
+            }
+
+            .card-img-top {
+                height: 90px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>BUZZ<span>CELEB</span> TV</h1>
+            <!-- Optional Home Link -->
+            <a href="/" style="text-decoration: none; color: var(--text-muted); font-size: 14px; font-weight: 600;">&larr; Back to News</a>
+        </header>
+
+        <!-- Top Ad Placeholder -->
+        <div class="ad-banner-top">
+            TOP BANNER AD (Responsive)
+        </div>
+
+        <!-- Player Section -->
+        <div id="playerWrapper" class="player-wrapper">
+            <div id="playerLoader" class="player-loader">
+                <div class="spinner"></div>
+            </div>
+            <div id="playerPlaceholder" class="player-placeholder">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 16px; opacity: 0.5;">
+                    <rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect>
+                    <polyline points="17 2 12 7 7 2"></polyline>
+                </svg>
+                <h3>Select a channel to start watching</h3>
+            </div>
+            
+            <video id="tvVideo" playsinline poster=""></video>
+            
+            <!-- Ad Container for IMA SDK -->
+            <div id="adContainer"></div>
+
+            <!-- Custom Controls Overlay -->
+            <div class="custom-controls" id="customControls">
+                <!-- Play/Pause -->
+                <button id="playBtn" class="control-btn" title="Play/Pause">
+                    <svg id="playIcon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    <svg id="pauseIcon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                </button>
+
+                <!-- Volume Group -->
+                <div class="volume-group">
+                    <button id="muteBtn" class="control-btn" title="Mute/Unmute">
+                        <svg id="volIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+                    </button>
+                    <div class="volume-container">
+                        <input type="range" id="volSlider" class="volume-slider" min="0" max="1" step="0.1" value="1">
+                    </div>
+                </div>
+
+                <!-- Progress Bar (Visual for Live) -->
+                <div class="progress-container">
+                    <div class="progress-bar"></div>
+                </div>
+
+                <div class="live-badge">
+                    <span class="live-dot"></span> LIVE
+                </div>
+
+                <!-- Fullscreen -->
+                <button id="fsBtn" class="control-btn" title="Fullscreen">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Now Playing Details -->
+        <div id="nowPlaying" class="now-playing-info">
+            <div id="npBadge" class="channel-badge">LIVE</div>
+            <div>
+                <h3 id="npTitle" style="font-size: 16px; font-weight: bold; margin: 0;">Channel Name</h3>
+                <p id="npDesc" style="font-size: 13px; color: var(--text-muted); margin: 0;">Stream description loaded here.</p>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls-bar">
+            <div class="filters" id="categoryFilters">
+                <button class="filter-btn active" data-cat="all">All Channels</button>
+                <!-- JS will populate categories -->
+            </div>
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search channels...">
+            </div>
+        </div>
+
+        <!-- Layout: Content + Sidebar -->
+        <div class="content-layout">
+            
+            <!-- Channels Grid -->
+            <div class="channel-grid" id="channelGrid">
+                <!-- JS will populate cards -->
+            </div>
+
+            <!-- Sidebar Ad -->
+            <div class="ad-sidebar">
+                SIDEBAR AD (300x600)
+            </div>
+
+        </div>
+
+        <!-- Instructions Footer -->
+        <div class="footer-info">
+            <h3>Developer Notes:</h3>
+            <p>1. <strong>Responsive:</strong> This page automatically adapts to mobile, tablet, and desktop.</p>
+            <p>2. <strong>Embedding:</strong> Save this entire file as <code>tv.html</code> and upload it to your server. Use an iframe to embed it on WordPress.</p>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA SOURCE ---
+        const tvChannels = [
+          {
+            "name": "BBC News",
+            "category": "News",
+            "logo": "https://upload.wikimedia.org/wikipedia/commons/b/b1/BBC_News_2022_%28Alt%29.svg",
+            "description": "24/7 UK and global breaking news.",
+            "stream": "https://news-streams.bbc.co.uk/news/live/stream.m3u8"
+          },
+          {
+            "name": "Sky News",
+            "category": "News",
+            "logo": "https://upload.wikimedia.org/wikipedia/commons/5/5e/Sky_News_2021_Logo.svg",
+            "description": "Leading UK breaking news and live updates.",
+            "stream": "https://siloh.pluto.tv/lilo/production/SkyNews/master.m3u8"
+          },
+          {
+            "name": "E! Entertainment",
+            "category": "Celebrity Gossip",
+            "logo": "https://upload.wikimedia.org/wikipedia/commons/8/88/E%21_Logo.svg",
+            "description": "Celebrity gossip, fashion, and entertainment.",
+            "stream": "https://dai2.xumo.com/amagi_hls_data_xumo1212A-eentertainment-pablv/hls/master.m3u8"
+          }
+        ];
+
+        // --- DOM ELEMENTS ---
+        const grid = document.getElementById('channelGrid');
+        const filterContainer = document.getElementById('categoryFilters');
+        const video = document.getElementById('tvVideo');
+        const adContainer = document.getElementById('adContainer');
+        const playerLoader = document.getElementById('playerLoader');
+        const playerPlaceholder = document.getElementById('playerPlaceholder');
+        const nowPlaying = document.getElementById('nowPlaying');
+        const npTitle = document.getElementById('npTitle');
+        const npDesc = document.getElementById('npDesc');
+        const npBadge = document.getElementById('npBadge');
+        const searchInput = document.getElementById('searchInput');
+        
+        // Custom Controls Elements
+        const playerWrapper = document.getElementById('playerWrapper');
+        const playBtn = document.getElementById('playBtn');
+        const playIcon = document.getElementById('playIcon');
+        const pauseIcon = document.getElementById('pauseIcon');
+        const muteBtn = document.getElementById('muteBtn');
+        const volSlider = document.getElementById('volSlider');
+        const fsBtn = document.getElementById('fsBtn');
+        const customControls = document.getElementById('customControls');
+
+        // --- STATE ---
+        let hls = null;
+        let activeCategory = 'all';
+        let searchQuery = '';
+        let controlsTimeout = null;
+        
+        // IMA SDK Vars
+        let adsManager;
+        let adsLoader;
+        let adDisplayContainer;
+        let intervalTimer;
+
+        // --- INITIALIZATION ---
+        function init() {
+            renderCategories();
+            renderGrid();
+            initIMA();
+            
+            // Event Listeners
+            searchInput.addEventListener('input', (e) => {
+                searchQuery = e.target.value.toLowerCase();
+                renderGrid();
+            });
+
+            // Player Control Listeners
+            playBtn.onclick = togglePlay;
+            video.onclick = togglePlay; // Tap video to toggle play
+            muteBtn.onclick = toggleMute;
+            volSlider.oninput = (e) => {
+                video.volume = e.target.value;
+                video.muted = false;
+            };
+            fsBtn.onclick = toggleFullscreen;
+            
+            // Sync UI state
+            video.addEventListener('play', updatePlayBtn);
+            video.addEventListener('pause', updatePlayBtn);
+            
+            // Touch Interaction for Controls
+            setupInteractions();
+        }
+
+        // --- IMA SDK SETUP ---
+        function initIMA() {
+            google.ima.settings.setPlayerType('google/ima-sdk-samples');
+            google.ima.settings.setPlayerVersion('1.0.0');
+
+            adDisplayContainer = new google.ima.AdDisplayContainer(
+                document.getElementById('adContainer'),
+                video
+            );
+            
+            adsLoader = new google.ima.AdsLoader(adDisplayContainer);
+            adsLoader.addEventListener(
+                google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
+                onAdsManagerLoaded,
+                false
+            );
+            adsLoader.addEventListener(
+                google.ima.AdErrorEvent.Type.AD_ERROR,
+                onAdError,
+                false
+            );
+        }
+
+        function requestAds() {
+            // Initialize container on user action (important for mobile)
+            adDisplayContainer.initialize();
+
+            // Request video ads.
+            const adsRequest = new google.ima.AdsRequest();
+            // Use a test VAST tag from Google
+            adsRequest.adTagUrl = 'https://pubads.g.doubleclick.net/gampad/ads?' +
+            'iu=/21775744923/external/single_ad_samples&sz=640x480&' +
+            'cust_params=sample_ct%3Dlinear&ciu_szs=300x250&' +
+            'gdfp_req=1&env=vp&output=vast&unviewed_position_start=1&correlator=';
+
+            adsLoader.requestAds(adsRequest);
+        }
+
+        function onAdsManagerLoaded(adsManagerLoadedEvent) {
+            const adsRenderingSettings = new google.ima.AdsRenderingSettings();
+            adsRenderingSettings.restoreCustomPlaybackStateOnAdBreakComplete = true;
+            
+            adsManager = adsManagerLoadedEvent.getAdsManager(video, adsRenderingSettings);
+
+            adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, onAdError);
+            adsManager.addEventListener(google.ima.AdEvent.Type.CONTENT_PAUSE_REQUESTED, onContentPauseRequested);
+            adsManager.addEventListener(google.ima.AdEvent.Type.CONTENT_RESUME_REQUESTED, onContentResumeRequested);
+            adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, onAdEvent);
+            adsManager.addEventListener(google.ima.AdEvent.Type.LOADED, onAdEvent);
+            adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, onAdEvent);
+            adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, onAdEvent);
+
+            try {
+                // Initialize the ads manager.
+                adsManager.init(video.clientWidth, video.clientHeight, google.ima.ViewMode.NORMAL);
+                // Start the ad playback.
+                adsManager.start();
+            } catch (adError) {
+                // An error may be thrown if there was a problem with the VAST response.
+                video.play();
+            }
+        }
+
+        function onAdEvent(adEvent) {
+            const ad = adEvent.getAd();
+            switch (adEvent.type) {
+                case google.ima.AdEvent.Type.LOADED:
+                    if (!ad.isLinear()) { video.play(); }
+                    break;
+                case google.ima.AdEvent.Type.STARTED:
+                    if (ad.isLinear()) {
+                        // For a linear ad, a timer can be started to poll for the remaining time.
+                        intervalTimer = setInterval(function() {
+                            const remainingTime = adsManager.getRemainingTime();
+                        }, 300);
+                    }
+                    break;
+                case google.ima.AdEvent.Type.COMPLETE:
+                    if (ad.isLinear()) { clearInterval(intervalTimer); }
+                    break;
+            }
+        }
+
+        function onAdError(adErrorEvent) {
+            console.log(adErrorEvent.getError());
+            if (adsManager) adsManager.destroy();
+            video.play(); // Fallback to content
+        }
+
+        function onContentPauseRequested() {
+            video.pause();
+            adContainer.style.display = 'block';
+        }
+
+        function onContentResumeRequested() {
+            adContainer.style.display = 'none';
+            // Start HLS content here if not already playing
+            if(video.paused) video.play();
+        }
+
+        function setupInteractions() {
+            // Function to show controls and auto-hide
+            const showControls = () => {
+                customControls.classList.add('show');
+                clearTimeout(controlsTimeout);
+                
+                // Hide after 3 seconds of inactivity, if playing
+                if (!video.paused) {
+                    controlsTimeout = setTimeout(() => {
+                        customControls.classList.remove('show');
+                    }, 3000);
+                }
+            };
+
+            // Events to trigger control visibility
+            playerWrapper.addEventListener('mousemove', showControls);
+            playerWrapper.addEventListener('touchstart', showControls);
+            playerWrapper.addEventListener('click', showControls);
+            
+            // Force hide if mouse leaves area
+            playerWrapper.addEventListener('mouseleave', () => {
+                if (!video.paused) {
+                    customControls.classList.remove('show');
+                }
+            });
+        }
+
+        function togglePlay(e) {
+            // Prevent triggering double events if clicking buttons inside wrapper
+            if(e && e.target.closest('.control-btn')) return;
+
+            if (video.paused) {
+                // If this is the FIRST play, try requesting ads
+                if(!hls) {
+                    // Logic handled in loadChannel
+                } else {
+                    video.play();
+                }
+                
+                setTimeout(() => {
+                     customControls.classList.remove('show');
+                }, 2000);
+            } else {
+                video.pause();
+                customControls.classList.add('show');
+                clearTimeout(controlsTimeout);
+            }
+        }
+
+        function updatePlayBtn() {
+            if (video.paused) {
+                playIcon.style.display = 'block';
+                pauseIcon.style.display = 'none';
+                customControls.classList.add('show'); // Ensure visible when paused
+            } else {
+                playIcon.style.display = 'none';
+                pauseIcon.style.display = 'block';
+            }
+        }
+
+        function toggleMute(e) {
+            e.stopPropagation();
+            video.muted = !video.muted;
+        }
+
+        function toggleFullscreen(e) {
+            e.stopPropagation();
+            if (!document.fullscreenElement) {
+                playerWrapper.requestFullscreen().catch(err => {
+                    alert(`Error attempting to enable fullscreen mode: ${err.message} (${err.name})`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // --- RENDER CATEGORIES ---
+        function renderCategories() {
+            const uniqueCategories = [...new Set(tvChannels.map(item => item.category))];
+            
+            uniqueCategories.forEach(cat => {
+                const btn = document.createElement('button');
+                btn.className = 'filter-btn';
+                btn.textContent = cat;
+                btn.onclick = () => filterGrid(cat, btn);
+                filterContainer.appendChild(btn);
+            });
+        }
+
+        function filterGrid(category, btnElement) {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            if(btnElement) btnElement.classList.add('active');
+            else document.querySelector('.filter-btn').classList.add('active'); // Reset to All
+
+            activeCategory = category;
+            
+            if (activeCategory === 'all') {
+               document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+               document.querySelector('.filter-btn').classList.add('active');
+            }
+            
+            renderGrid();
+        }
+
+        document.querySelector('.filter-btn').onclick = function() {
+            filterGrid('all', this);
+        };
+
+
+        // --- RENDER GRID ---
+        function renderGrid() {
+            grid.innerHTML = '';
+            
+            const filtered = tvChannels.filter(ch => {
+                const matchCat = activeCategory === 'all' || ch.category === activeCategory;
+                const matchSearch = ch.name.toLowerCase().includes(searchQuery) || 
+                                    ch.description.toLowerCase().includes(searchQuery);
+                return matchCat && matchSearch;
+            });
+
+            if (filtered.length === 0) {
+                grid.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: #6b7280;">No channels found.</p>';
+                return;
+            }
+
+            filtered.forEach((channel, index) => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.onclick = () => loadChannel(channel);
+
+                card.innerHTML = `
+                    <div class="card-img-top">
+                        <img src="${channel.logo}" alt="${channel.name}">
+                    </div>
+                    <div class="card-body">
+                        <div class="card-category">${channel.category}</div>
+                        <div class="card-title">${channel.name}</div>
+                        <div class="card-desc">${channel.description}</div>
+                        <div class="play-overlay">Tap to Watch</div>
+                    </div>
+                `;
+
+                grid.appendChild(card);
+
+                if ((index + 1) % 3 === 0) {
+                    const ad = document.createElement('div');
+                    ad.className = 'ad-card-feed';
+                    ad.textContent = 'IN-FEED AD SPACE';
+                    grid.appendChild(ad);
+                }
+            });
+        }
+
+        // --- VIDEO PLAYER LOGIC ---
+        function loadChannel(channel) {
+            playerPlaceholder.style.display = 'none';
+            playerLoader.style.display = 'flex';
+            nowPlaying.style.display = 'flex';
+            
+            npTitle.textContent = channel.name;
+            npDesc.textContent = channel.description;
+            npBadge.textContent = channel.category;
+
+            if (window.innerWidth < 900) {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+
+            // Try to request ADS first
+            // Note: In production, check if ads already played recently
+            requestAds();
+
+            const streamUrl = channel.stream;
+
+            if (Hls.isSupported()) {
+                if (hls) {
+                    hls.destroy();
+                }
+                hls = new Hls();
+                hls.loadSource(streamUrl);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    playerLoader.style.display = 'none';
+                    // We don't auto-play immediately if ads are requested, 
+                    // IMA SDK handles the play call via onContentResumeRequested or onAdError
+                });
+            }
+            else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = streamUrl;
+                video.addEventListener('loadedmetadata', function() {
+                    playerLoader.style.display = 'none';
+                });
+            }
+        }
+
+        init();
+
+    </script>
+</body>
+</html>
