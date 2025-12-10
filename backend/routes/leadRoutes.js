@@ -5,7 +5,8 @@ const {
     getLeadById, 
     harvestLeads, 
     generateContentRecipe,
-    updateLeadStatus
+    updateLeadStatus,
+    autoPostLead
 } = require('../controllers/leadController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
@@ -14,5 +15,6 @@ router.route('/harvest').post(protect, admin, harvestLeads);
 router.route('/:id').get(protect, getLeadById);
 router.route('/:id/generate').post(protect, generateContentRecipe);
 router.route('/:id/status').put(protect, updateLeadStatus);
+router.route('/:id/autopost').post(protect, admin, autoPostLead);
 
 module.exports = router;

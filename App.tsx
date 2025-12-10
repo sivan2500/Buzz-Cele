@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import Footer from './components/Footer';
@@ -24,8 +23,9 @@ import Advertise from './components/Advertise';
 import DoNotSell from './components/DoNotSell';
 import SubscriptionTerms from './components/SubscriptionTerms';
 import Disclaimer from './components/Disclaimer';
-import VerifyEmail from './components/VerifyEmail'; // Correct relative import
+import VerifyEmail from './components/VerifyEmail';
 import SubscriptionModal from './components/SubscriptionModal';
+import SeoHead from './components/SeoHead';
 import { MOCK_ARTICLES, NAVIGATION_ITEMS, MOCK_AUTHORS, MOCK_SERIES, MOCK_STORIES, GOOGLE_TRENDING_DATA } from './constants';
 import { Article, Author, Series, User, RadioStation, AppNotification } from './types';
 import { generateGossipArticles } from './services/geminiService';
@@ -453,7 +453,7 @@ export default function App() {
 
   const activeNavItem = NAVIGATION_ITEMS.find(item => item.label === activeTab);
 
-  const renderContent = () => {
+  const renderCurrentView = () => {
     if (currentView === 'verify') return <VerifyEmail />;
     if (currentView === 'privacy') return <PrivacyPolicy />;
     if (currentView === 'terms') return <TermsOfService />;
@@ -466,12 +466,19 @@ export default function App() {
 
     if (currentView === 'live') {
       return (
-        <LiveView 
-          onSelectStation={handleSelectStation}
-          currentStation={currentStation}
-          isPlaying={isRadioPlaying}
-          onTogglePlay={handleToggleRadioPlay}
-        />
+        <>
+          <SeoHead 
+            title="Live TV & Radio" 
+            description="Watch 24/7 celebrity news streams and listen to global music stations live on BuzzCelebDaily."
+            url={`${window.location.origin}/#live`}
+          />
+          <LiveView 
+            onSelectStation={handleSelectStation}
+            currentStation={currentStation}
+            isPlaying={isRadioPlaying}
+            onTogglePlay={handleToggleRadioPlay}
+          />
+        </>
       );
     }
 
@@ -527,8 +534,28 @@ export default function App() {
     // Default Home View
     const displayArticles = selectedTag ? filteredArticles : (featuredArticle ? mainFeed : filteredArticles);
 
+    // Dynamic SEO for Home
+    const pageTitle = selectedTag ? `#${selectedTag} News` : activeTab !== 'All' ? `${activeTab} News` : 'The Source for Celebrity News';
+    const pageDesc = `Latest ${activeTab} gossip, breaking news, and red carpet coverage. ${selectedTag ? `Explore posts about ${selectedTag}.` : ''}`;
+
     return (
       <>
+        <SeoHead 
+            title={pageTitle}
+            description={pageDesc}
+            schema={{
+                "@context": "https://schema.org",
+                "@type": "WebSite",
+                "name": "BuzzCelebDaily",
+                "url": window.location.origin,
+                "potentialAction": {
+                    "@type": "SearchAction",
+                    "target": `${window.location.origin}/#search?q={search_term_string}`,
+                    "query-input": "required name=search_term_string"
+                }
+            }}
+        />
+
         <StoryRail stories={MOCK_STORIES} onStoryClick={setViewingStoryId} />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
@@ -744,7 +771,12 @@ export default function App() {
 
           </div>
         </div>
+      </>
+    );
+  };
 
+  return (
+      <>
         <SearchOverlay 
           isOpen={isSearchOpen}
           onClose={() => setIsSearchOpen(false)}
@@ -811,10 +843,10 @@ export default function App() {
         />
         
         <main className="min-h-screen pt-4">
-          {renderContent()}
+          {renderCurrentView()}
         </main>
 
         <Footer />
       </>
-    );
+  );
 };

@@ -69,6 +69,7 @@ const Footer: React.FC = () => {
              <a href="#privacy" className="hover:text-gray-300 focus:outline-none focus:text-white">Privacy</a>
              <a href="#terms" className="hover:text-gray-300 focus:outline-none focus:text-white">Cookies</a>
              <a href="#disclaimer" className="hover:text-gray-300 focus:outline-none focus:text-white">Disclaimer</a>
+             <a href="/sitemap.xml" target="_blank" className="hover:text-gray-300 focus:outline-none focus:text-white">Sitemap</a>
           </div>
         </div>
       </div>

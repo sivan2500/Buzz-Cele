@@ -1,4 +1,9 @@
+
 const Lead = require('../models/Lead');
+const Article = require('../models/Article');
+const TrendService = require('../services/trendService');
+const AIService = require('../services/aiService');
+const SocialService = require('../services/socialService');
 
 // @desc    Get all leads
 // @route   GET /api/leads
@@ -33,56 +38,45 @@ const getLeadById = async (req, res) => {
   }
 };
 
-// @desc    Harvest new leads (Mocking AI/API Scanning)
+// @desc    Harvest new leads (Using TrendService)
 // @route   POST /api/leads/harvest
 const harvestLeads = async (req, res) => {
   try {
-    // In a real app, this would call Google Trends API, Twitter API, GSC API
-    // Here we simulate finding 3 new hot leads
-    
-    const mockTrends = [
-      {
-        title: "Zendaya's Vintage Versace Moment",
-        type: 'story',
-        source: 'Twitter Trending',
-        score: 98,
-        estimatedTraffic: '250k+',
-        metrics: { impressions: 1500000, clicks: 45000, trendVelocity: 'High' },
-        evidence: [{ source: 'Twitter', url: '#', snippet: 'Trending #1 Worldwide: Zendaya stuns in archive Versace.' }]
-      },
-      {
-        title: "Best Retinol Serums 2025",
-        type: 'seo',
-        source: 'Google Search Console',
-        score: 85,
-        estimatedTraffic: '45k/mo',
-        metrics: { impressions: 80000, clicks: 1200, trendVelocity: 'Medium' },
-        evidence: [{ source: 'GSC', url: '#', snippet: 'Keyword "best retinol" up 200% WoW.' }]
-      },
-      {
-        title: "Rolex vs. Patek: Investment Guide",
-        type: 'sponsor',
-        source: 'Market Watch',
-        score: 92,
-        estimatedTraffic: 'High Value ($$$)',
-        metrics: { impressions: 30000, clicks: 5000, trendVelocity: 'Stable' },
-        evidence: [{ source: 'NewsAPI', url: '#', snippet: 'Luxury watch market seeing resurgence.' }]
-      }
-    ];
+    // 1. Fetch aggregated trends from RSS, Google, and Socials
+    const freshTrends = await TrendService.aggregateTrends();
 
     const createdLeads = [];
+    let duplicateCount = 0;
 
-    for (const trend of mockTrends) {
-      const lead = await Lead.create({
-        ...trend,
-        provenance: [{ action: 'harvested', user: 'AI_Scanner_Bot', details: 'Detected via API harvest' }]
-      });
-      createdLeads.push(lead);
+    // 2. Save to database (avoiding direct duplicates based on title)
+    for (const trend of freshTrends) {
+      // Check if lead with same title already exists in DB
+      const exists = await Lead.findOne({ title: trend.title });
+      
+      if (!exists) {
+        const lead = await Lead.create({
+          ...trend,
+          provenance: [{ 
+              action: 'harvested', 
+              user: req.user ? req.user.name : 'System_Auto_Bot', 
+              details: `Detected via ${trend.source}` 
+          }]
+        });
+        createdLeads.push(lead);
+      } else {
+        duplicateCount++;
+      }
     }
 
-    res.status(201).json({ message: `Harvested ${createdLeads.length} new leads`, leads: createdLeads });
+    res.status(201).json({ 
+        message: `Harvest complete. Added ${createdLeads.length} new leads.`, 
+        duplicatesSkipped: duplicateCount,
+        leads: createdLeads 
+    });
+
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Harvest Error:", error);
+    res.status(500).json({ message: "Failed to harvest leads: " + error.message });
   }
 };
 
@@ -143,10 +137,64 @@ const updateLeadStatus = async (req, res) => {
   }
 };
 
+// @desc    Auto-Post Lead as Article using AI
+// @route   POST /api/leads/:id/autopost
+const autoPostLead = async (req, res) => {
+    try {
+        const lead = await Lead.findById(req.params.id);
+        if (!lead) return res.status(404).json({ message: 'Lead not found' });
+
+        if (lead.status === 'published') {
+            return res.status(400).json({ message: 'Lead already published' });
+        }
+
+        // 1. Generate Article Content via Gemini
+        const generatedContent = await AIService.generateArticleFromLead(lead);
+
+        // 2. Create Article in DB
+        const newArticle = await Article.create({
+            title: generatedContent.title,
+            excerpt: generatedContent.excerpt,
+            content: generatedContent.content,
+            category: generatedContent.category || 'Celebrity',
+            authorName: 'BuzzCeleb Staff', // Default auto-author
+            imageUrl: `https://picsum.photos/800/600?random=${Math.floor(Math.random() * 1000)}`, // Placeholder
+            readTime: generatedContent.readTime,
+            isBreaking: lead.score > 80,
+            tags: generatedContent.seo.keywords,
+            metaDescription: generatedContent.seo.metaDescription,
+            seoKeywords: generatedContent.seo.keywords,
+            views: 0
+        });
+
+        // 3. Update Lead Status
+        lead.status = 'published';
+        lead.provenance.push({ 
+            action: 'auto_posted', 
+            user: req.user ? req.user.name : 'System', 
+            details: `Converted to Article ID: ${newArticle._id}` 
+        });
+        await lead.save();
+
+        // 4. Trigger Social Broadcast (Async)
+        SocialService.broadcast(newArticle).catch(err => console.error("Social Broadcast Error:", err));
+
+        res.status(201).json({ 
+            message: 'Article auto-posted successfully', 
+            article: newArticle 
+        });
+
+    } catch (error) {
+        console.error("Auto-Post Error:", error);
+        res.status(500).json({ message: "Failed to auto-post: " + error.message });
+    }
+};
+
 module.exports = {
   getLeads,
   getLeadById,
   harvestLeads,
   generateContentRecipe,
-  updateLeadStatus
+  updateLeadStatus,
+  autoPostLead
 };

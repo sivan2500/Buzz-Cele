@@ -5,7 +5,8 @@ const {
     getArticleById, 
     createArticleComment,
     getArticleComments,
-    createArticle
+    createArticle,
+    incrementArticleViews
 } = require('../controllers/articleController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
@@ -19,5 +20,8 @@ router.route('/:id')
 router.route('/:id/comments')
     .get(getArticleComments)
     .post(protect, createArticleComment);
+
+router.route('/:id/view')
+    .put(incrementArticleViews);
 
 module.exports = router;

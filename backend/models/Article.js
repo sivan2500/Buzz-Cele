@@ -22,6 +22,13 @@ const articleSchema = mongoose.Schema(
     
     tags: [{ type: String }],
     
+    // Engagement
+    views: { type: Number, default: 0 },
+
+    // SEO Fields (Automatic)
+    metaDescription: { type: String },
+    seoKeywords: [{ type: String }],
+    
     // Embedded Poll Structure (for Article-specific AI polls)
     aiPoll: {
        question: String,

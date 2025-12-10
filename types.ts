@@ -14,6 +14,7 @@ export interface Article {
   aiPoll?: Poll;
   tags?: string[];
   affiliateProducts?: AffiliateProduct[];
+  views?: number;
 }
 
 export enum Category {

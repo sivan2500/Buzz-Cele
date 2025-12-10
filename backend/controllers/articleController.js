@@ -1,5 +1,7 @@
+
 const Article = require('../models/Article');
 const Comment = require('../models/Comment');
+const SocialService = require('../services/socialService');
 
 // @desc    Fetch all articles
 // @route   GET /api/articles
@@ -67,8 +69,11 @@ const createArticleComment = async (req, res) => {
         text,
       });
 
-      await comment.save();
-      res.status(201).json({ message: 'Comment added' });
+      const savedComment = await comment.save();
+      // Populate user info for immediate frontend display if needed
+      await savedComment.populate('user', 'name avatarUrl');
+
+      res.status(201).json(savedComment);
     } else {
       res.status(404).json({ message: 'Article not found' });
     }
@@ -101,23 +106,51 @@ const createArticle = async (req, res) => {
             title: req.body.title,
             excerpt: req.body.excerpt,
             category: req.body.category,
-            author: req.body.author,
+            author: req.body.author, // Assuming string name here for manual entry
+            authorId: req.user._id,  // Link to admin user
             imageUrl: req.body.imageUrl,
             readTime: req.body.readTime,
-            content: req.body.content || "Full content would go here..."
+            content: req.body.content || "Full content would go here...",
+            views: 0,
+            isBreaking: req.body.isBreaking || false
         });
 
         const createdArticle = await article.save();
+
+        // Broadcast to Social Media (Async)
+        SocialService.broadcast(createdArticle).catch(err => console.error("Social Broadcast Error:", err));
+
         res.status(201).json(createdArticle);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 }
 
+// @desc    Increment Article Views
+// @route   PUT /api/articles/:id/view
+// @access  Public
+const incrementArticleViews = async (req, res) => {
+    try {
+        const article = await Article.findByIdAndUpdate(
+            req.params.id,
+            { $inc: { views: 1 } },
+            { new: true }
+        );
+        if (article) {
+            res.json({ views: article.views });
+        } else {
+            res.status(404).json({ message: 'Article not found' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = { 
     getArticles, 
     getArticleById, 
     createArticleComment, 
     getArticleComments,
-    createArticle
+    createArticle,
+    incrementArticleViews
 };

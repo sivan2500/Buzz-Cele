@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Article, User, Poll, SponsoredContent } from '../types';
-import { Clock, User as UserIcon, Facebook, Twitter, Linkedin, MessageCircle, Mail, ChevronDown, ChevronUp, Flame, Bookmark, Layers, Lock, Link as LinkIcon, Check, Sparkles, BarChart2, ShoppingBag, ExternalLink } from 'lucide-react';
+import { Clock, User as UserIcon, Facebook, Twitter, Linkedin, MessageCircle, Mail, ChevronDown, ChevronUp, Flame, Bookmark, Layers, Lock, Link as LinkIcon, Check, Sparkles, BarChart2, ShoppingBag, ExternalLink, Eye, Loader2, Send } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import Button from './Button';
 import { MOCK_SERIES, MOCK_SPONSORED_CONTENT } from '../constants';
@@ -19,6 +19,24 @@ interface ArticleCardProps {
   onOpenAuthModal?: () => void;
   onTagClick?: (tag: string) => void;
 }
+
+// Define Comment Interface locally for display
+interface CommentType {
+    _id: string;
+    text: string;
+    user: {
+        name: string;
+        avatarUrl?: string;
+    };
+    createdAt: string;
+}
+
+const formatNumber = (num?: number) => {
+    if (!num) return '0';
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
+    return num.toString();
+};
 
 const updateOpenGraphTags = (article: Article) => {
   if (!document) return;
@@ -176,6 +194,41 @@ const ReactionButton = ({ emoji, count, label }: { emoji: string, count: number,
   );
 }
 
+const SponsoredCarousel = ({ items }: { items: SponsoredContent[] }) => {
+  return (
+    <div className="mt-4 pt-4 border-t border-dashed border-gray-200 dark:border-gray-700" onClick={e => e.stopPropagation()}>
+      <div className="flex items-center justify-between mb-3 px-1">
+        <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Sponsored Content</span>
+        <span className="text-[9px] text-gray-300 border border-gray-200 dark:border-gray-700 px-1 rounded">Ad</span>
+      </div>
+      <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 snap-x">
+          {items.map(item => (
+              <a 
+                key={item.id} 
+                href={item.url} 
+                className="shrink-0 w-36 sm:w-44 group/ad block snap-start"
+                onClick={e => e.stopPropagation()}
+              >
+                  <div className="aspect-video bg-gray-100 dark:bg-gray-800 rounded-md overflow-hidden mb-2 relative">
+                      <img 
+                        src={item.imageUrl} 
+                        alt={item.title} 
+                        className="w-full h-full object-cover group-hover/ad:scale-105 transition-transform" 
+                        loading="lazy"
+                        decoding="async"
+                      />
+                  </div>
+                  <h5 className="text-xs font-bold text-gray-800 dark:text-gray-200 leading-tight group-hover/ad:text-brand-600 dark:group-hover/ad:text-brand-400 line-clamp-2 mb-0.5">
+                      {item.title}
+                  </h5>
+                  <span className="text-[10px] text-gray-400 truncate block">{item.advertiser}</span>
+              </a>
+          ))}
+      </div>
+    </div>
+  );
+};
+
 const ArticleCard: React.FC<ArticleCardProps> = ({ 
   article, 
   layout = 'vertical', 
@@ -192,8 +245,13 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
   const [poll, setPoll] = useState<Poll | null>(article.aiPoll || null);
   const [isPollLoading, setIsPollLoading] = useState(false);
   const [hasVotedPoll, setHasVotedPoll] = useState(false);
+  
+  // Real Comment System State
+  const [comments, setComments] = useState<CommentType[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [isPostingComment, setIsPostingComment] = useState(false);
 
-  const commentCount = 12;
   const commentsId = `comments-${article.id}`;
   const series = article.seriesId ? MOCK_SERIES.find(s => s.id === article.seriesId) : null;
   const isPremium = currentUser?.isPremium;
@@ -211,6 +269,63 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
       updateOpenGraphTags(article);
     }
   }, [featured, article]);
+
+  // Fetch Comments on Expand
+  useEffect(() => {
+      if (isCommentsOpen && comments.length === 0) {
+          fetchComments();
+      }
+  }, [isCommentsOpen]);
+
+  const fetchComments = async () => {
+      setLoadingComments(true);
+      try {
+          const res = await fetch(`http://localhost:5000/api/articles/${article.id}/comments`);
+          if (res.ok) {
+              const data = await res.json();
+              setComments(data);
+          }
+      } catch (err) {
+          console.error("Failed to load comments", err);
+      } finally {
+          setLoadingComments(false);
+      }
+  };
+
+  const handlePostComment = async () => {
+      if (!commentText.trim() || !currentUser) return;
+      setIsPostingComment(true);
+      
+      try {
+          // Get token from storage manually since it's not in user object
+          // Note: In a real app, use a Context or better storage retrieval
+          const storedUser = localStorage.getItem('buzzCelebUser');
+          let token = '';
+          if (storedUser) {
+              const parsed = JSON.parse(storedUser);
+              token = parsed.token;
+          }
+
+          const res = await fetch(`http://localhost:5000/api/articles/${article.id}/comments`, {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({ text: commentText })
+          });
+
+          if (res.ok) {
+              const newComment = await res.json();
+              setComments([newComment, ...comments]);
+              setCommentText('');
+          }
+      } catch (err) {
+          console.error("Failed to post comment", err);
+      } finally {
+          setIsPostingComment(false);
+      }
+  };
 
   useEffect(() => {
     if (poll) {
@@ -303,6 +418,29 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
     </button>
   );
 
+  // Generate JSON-LD Structured Data
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "NewsArticle",
+    "headline": article.title,
+    "image": [article.imageUrl],
+    "datePublished": article.publishedAt,
+    "dateModified": article.publishedAt,
+    "author": [{
+        "@type": "Person",
+        "name": article.author,
+    }],
+    "description": article.excerpt,
+    "publisher": {
+        "@type": "Organization",
+        "name": "BuzzCelebDaily",
+        "logo": {
+            "@type": "ImageObject",
+            "url": "https://buzzcelebdaily.com/logo.png" // Placeholder, in a real app this would be a real URL
+        }
+    }
+  };
+
   const AuthorComponent = onAuthorClick ? 'button' : 'span';
 
   const PollSection = () => {
@@ -379,7 +517,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
   const AffiliateSection = () => {
     // Hide for premium users
     if (isPremium) return null;
-    if (layout === 'horizontal' || !article.affiliateProducts) return null;
+    if (layout === 'horizontal' || !article.affiliateProducts || article.affiliateProducts.length === 0) return null;
 
     return (
       <div className="mb-5 border-t border-b border-gray-100 dark:border-gray-800 py-4 bg-gray-50/30 dark:bg-gray-900/30">
@@ -398,7 +536,13 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
                onClick={e => e.stopPropagation()}
              >
                 <div className="h-32 overflow-hidden relative">
-                   <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover group-hover/prod:scale-105 transition-transform" />
+                   <img 
+                     src={product.imageUrl} 
+                     alt={product.name} 
+                     className="w-full h-full object-cover group-hover/prod:scale-105 transition-transform" 
+                     loading="lazy"
+                     decoding="async"
+                   />
                    <div className="absolute top-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm">
                      {product.price}
                    </div>
@@ -417,49 +561,26 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
     );
   }
 
-  const SponsoredGrid = () => {
+  const SponsoredSection = () => {
       // Hide for premium users
       if (isPremium) return null;
       if (layout === 'horizontal') return null;
 
-      const sponsored = MOCK_SPONSORED_CONTENT.slice(0, 2);
-
-      return (
-          <div className="mt-4 pt-4 border-t border-dashed border-gray-200 dark:border-gray-700">
-              <span className="text-[9px] uppercase font-bold text-gray-400 mb-2 block tracking-wider">From Our Partners</span>
-              <div className="grid grid-cols-2 gap-3">
-                  {sponsored.map(item => (
-                      <a 
-                        key={item.id} 
-                        href={item.url} 
-                        className="group/ad block"
-                        onClick={e => e.stopPropagation()}
-                      >
-                          <div className="aspect-video bg-gray-100 dark:bg-gray-800 rounded-md overflow-hidden mb-1.5 relative">
-                              <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover group-hover/ad:scale-105 transition-transform" />
-                              <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[8px] px-1 py-0.5 backdrop-blur-sm">
-                                 Sponsored
-                              </div>
-                          </div>
-                          <h5 className="text-xs font-bold text-gray-800 dark:text-gray-200 leading-tight group-hover/ad:text-brand-600 dark:group-hover/ad:text-brand-400 line-clamp-2">
-                              {item.title}
-                          </h5>
-                          <span className="text-[10px] text-gray-400">{item.advertiser}</span>
-                      </a>
-                  ))}
-              </div>
-          </div>
-      )
+      return <SponsoredCarousel items={MOCK_SPONSORED_CONTENT} />;
   }
 
   if (featured) {
     return (
       <div className="group relative overflow-hidden rounded-xl bg-gray-900 text-white h-full min-h-[400px] flex flex-col justify-end shadow-xl cursor-pointer transition-all duration-300 hover:shadow-2xl hover:-translate-y-1">
+        {/* Inject JSON-LD */}
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+        
         <div className="absolute inset-0">
           <img 
             src={article.imageUrl} 
             alt={article.title} 
             className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-80 group-hover:opacity-60"
+            decoding="async"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
         </div>
@@ -516,6 +637,9 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
                <span className="flex items-center gap-1" aria-label={`Published ${formatDistanceToNow(new Date(article.publishedAt))} ago`}>
                  <Clock size={14} aria-hidden="true" /> {formatDistanceToNow(new Date(article.publishedAt))} ago
                </span>
+               <span className="flex items-center gap-1 text-gray-400">
+                 <Eye size={14} aria-hidden="true" /> {formatNumber(article.views)}
+               </span>
              </div>
              
              <div onClick={(e) => e.stopPropagation()}>
@@ -543,6 +667,9 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
   if (layout === 'horizontal') {
     return (
       <div className="flex gap-4 group cursor-pointer border-b border-gray-50 dark:border-gray-800 pb-4 last:border-0 last:pb-0 relative hover:bg-gray-50/50 dark:hover:bg-gray-800/50 p-2 -mx-2 rounded-lg transition-colors duration-200">
+        {/* Inject JSON-LD */}
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+
         <div className="w-1/3 shrink-0 relative overflow-hidden rounded-lg aspect-[4/3]">
            <img 
             src={article.imageUrl} 
@@ -593,6 +720,9 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
                <span className="flex items-center gap-1" aria-label={`Published ${formatDistanceToNow(new Date(article.publishedAt))} ago`}>
                  <Clock size={12} aria-hidden="true" /> {formatDistanceToNow(new Date(article.publishedAt))} ago
                </span>
+               <span className="flex items-center gap-1 text-gray-400">
+                 <Eye size={12} aria-hidden="true" /> {formatNumber(article.views)}
+               </span>
              </div>
           </div>
           <div className="mt-2 pt-2 border-t border-gray-50 dark:border-gray-800">
@@ -605,6 +735,9 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
 
   return (
     <article className="group cursor-pointer flex flex-col h-full bg-white dark:bg-gray-900 rounded-lg relative hover:shadow-lg hover:-translate-y-1 transition-all duration-300 border border-transparent hover:border-gray-100 dark:hover:border-gray-800">
+      {/* Inject JSON-LD */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+
       <div className="relative overflow-hidden rounded-lg aspect-video mb-3 shadow-sm">
         <img 
           src={article.imageUrl} 
@@ -710,10 +843,10 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
             className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors w-full group/comments focus:outline-none focus:text-brand-600"
             aria-expanded={isCommentsOpen}
             aria-controls={commentsId}
-            aria-label={`${commentCount} Comments. Click to ${isCommentsOpen ? 'collapse' : 'expand'}.`}
+            aria-label={`${comments.length} Comments. Click to ${isCommentsOpen ? 'collapse' : 'expand'}.`}
           >
             <MessageCircle size={14} className="text-gray-400 group-hover/comments:text-brand-600 dark:group-hover/comments:text-brand-400" aria-hidden="true" />
-            <span>{commentCount} Comments</span>
+            <span>{comments.length > 0 ? comments.length : 'No'} Comments</span>
             {isCommentsOpen ? <ChevronUp size={14} className="ml-auto" aria-hidden="true" /> : <ChevronDown size={14} className="ml-auto" aria-hidden="true" />}
           </button>
           
@@ -721,20 +854,24 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
             <div id={commentsId} className="mt-3 animate-in fade-in slide-in-from-top-1 duration-200 cursor-auto" onClick={(e) => e.stopPropagation()}>
               
               <div className="bg-gray-50 dark:bg-gray-800/50 rounded-md p-3 mb-3 space-y-3 max-h-40 overflow-y-auto custom-scrollbar border border-gray-100 dark:border-gray-800">
-                <div className="border-b border-gray-200 dark:border-gray-700 pb-2 last:border-0 last:pb-0">
-                   <div className="flex justify-between items-baseline mb-1">
-                      <span className="font-bold text-xs text-gray-900 dark:text-gray-200">PopCultureVulture</span>
-                      <span className="text-[10px] text-gray-500 dark:text-gray-400">10m ago</span>
-                   </div>
-                   <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">This is exactly what I thought would happen! The signs were all there.</p>
-                </div>
-                <div className="border-b border-gray-200 dark:border-gray-700 pb-2 last:border-0 last:pb-0">
-                   <div className="flex justify-between items-baseline mb-1">
-                      <span className="font-bold text-xs text-gray-900 dark:text-gray-200">TeaSpiller</span>
-                      <span className="text-[10px] text-gray-500 dark:text-gray-400">1h ago</span>
-                   </div>
-                   <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">Wait, does this mean the tour is cancelled?</p>
-                </div>
+                {loadingComments ? (
+                    <div className="flex justify-center p-4">
+                        <Loader2 className="animate-spin text-brand-500" size={18} />
+                    </div>
+                ) : comments.length > 0 ? (
+                    comments.map(comment => (
+                        <div key={comment._id} className="border-b border-gray-200 dark:border-gray-700 pb-2 last:border-0 last:pb-0">
+                           <div className="flex items-center gap-2 mb-1">
+                              <img src={comment.user.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${comment.user.name}`} alt="" className="w-4 h-4 rounded-full" loading="lazy" />
+                              <span className="font-bold text-xs text-gray-900 dark:text-gray-200">{comment.user.name}</span>
+                              <span className="text-[10px] text-gray-500 dark:text-gray-400 ml-auto">{formatDistanceToNow(new Date(comment.createdAt))} ago</span>
+                           </div>
+                           <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed pl-6">{comment.text}</p>
+                        </div>
+                    ))
+                ) : (
+                    <p className="text-xs text-gray-500 text-center py-2">No comments yet. Be the first!</p>
+                )}
               </div>
               
               <div className="sticky bottom-0 z-20 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 py-3 -mx-4 px-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
@@ -750,16 +887,28 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
                     
                     <div className="flex gap-2">
                         {currentUser && (
-                          <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-gray-700" />
+                          <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-gray-700" loading="lazy" />
                         )}
                         <input 
                           type="text" 
                           placeholder={currentUser ? "Share your thoughts..." : "Sign in to join the conversation..."}
                           className="w-full text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-3 py-2 focus:outline-none focus:border-brand-300 focus:ring-1 focus:ring-brand-200 dark:text-white dark:focus:ring-brand-900 transition-all placeholder:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
                           aria-label="Write a comment"
+                          value={commentText}
+                          onChange={(e) => setCommentText(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handlePostComment()}
                           onClick={handleCommentFocus}
                           readOnly={!currentUser}
                         />
+                        {currentUser && (
+                            <button 
+                                onClick={handlePostComment}
+                                disabled={isPostingComment || !commentText.trim()}
+                                className="p-2 bg-brand-600 text-white rounded-md hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isPostingComment ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                            </button>
+                        )}
                     </div>
                  </div>
               </div>
@@ -768,7 +917,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
           )}
         </div>
 
-        <SponsoredGrid />
+        <SponsoredSection />
 
          <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 gap-3 pt-4 border-t border-gray-100 dark:border-gray-800 mt-auto">
              <AuthorComponent 
@@ -782,6 +931,10 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
              <span className="text-gray-300 dark:text-gray-600" aria-hidden="true">•</span>
              <span aria-label={`Published ${formatDistanceToNow(new Date(article.publishedAt))} ago`}>
                {formatDistanceToNow(new Date(article.publishedAt))} ago
+             </span>
+             <span className="text-gray-300 dark:text-gray-600" aria-hidden="true">•</span>
+             <span className="flex items-center gap-1 font-medium text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-900/20 px-1.5 py-0.5 rounded">
+               <Eye size={12} aria-hidden="true" /> {formatNumber(article.views)}
              </span>
           </div>
       </div>

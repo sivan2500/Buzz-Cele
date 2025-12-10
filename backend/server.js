@@ -1,38 +1,68 @@
+
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const compression = require('compression');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const cron = require('node-cron');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const articleRoutes = require('./routes/articleRoutes');
 const contentRoutes = require('./routes/contentRoutes');
-const leadRoutes = require('./routes/leadRoutes'); // Import Lead Routes
+const leadRoutes = require('./routes/leadRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
+const seoRoutes = require('./routes/seoRoutes');
+const { handleWebhook } = require('./controllers/paymentController'); 
 const Subscriber = require('./models/Subscriber');
+const { runHarvestCycle } = require('./controllers/leadController');
+const SocialService = require('./services/socialService');
 
 dotenv.config();
-
-// Connect to MongoDB
 connectDB();
 
 const app = express();
 
-// Middleware
-app.use(cors());
+// 1. Security Headers
+app.use(helmet());
+
+// 2. Rate Limiting (100 requests per 15 minutes)
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, 
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api', limiter);
+
+// 3. Compression
+app.use(compression());
+
+// 4. CORS Configuration (Strict for production)
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || '*', // Lock this down in prod
+  optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
+
+// Webhook must be raw (before JSON parser)
+app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), handleWebhook);
+
 app.use(express.json());
 
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/articles', articleRoutes);
 app.use('/api/content', contentRoutes);
-app.use('/api/leads', leadRoutes); // Mount Lead Routes
+app.use('/api/leads', leadRoutes);
+app.use('/api/payment', paymentRoutes);
+app.use('/', seoRoutes);
 
-// Simple Newsletter Route
 app.post('/api/subscribe', async (req, res) => {
     const { email } = req.body;
     try {
         const exists = await Subscriber.findOne({ email });
-        if (exists) {
-            return res.status(400).json({ message: 'Email already subscribed' });
-        }
+        if (exists) return res.status(400).json({ message: 'Email already subscribed' });
         await Subscriber.create({ email });
         res.status(201).json({ message: 'Subscribed successfully' });
     } catch (error) {
@@ -44,8 +74,20 @@ app.get('/', (req, res) => {
   res.send('BuzzCelebDaily API is running...');
 });
 
-const PORT = process.env.PORT || 5000;
+// --- SCHEDULED TASKS ---
+cron.schedule('0 */4 * * *', async () => {
+    console.log('⏰ Running scheduled harvest cycle...');
+    try {
+        await runHarvestCycle();
+    } catch (err) {
+        console.error('Scheduled harvest failed:', err);
+        SocialService.sendAdminAlert(`❌ *CRON Job Failed*\n\n${err.message}`);
+    }
+});
 
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  const mode = process.env.NODE_ENV || 'development';
+  console.log(`Server running in ${mode} mode on port ${PORT}`);
+  SocialService.sendAdminAlert(`🚀 *Server Started*\n\nEnvironment: ${mode}\nPort: ${PORT}`);
 });
