@@ -1,6 +1,5 @@
 
-const Article = require('../models/Article');
-const Comment = require('../models/Comment');
+const supabase = require('../config/supabase');
 const SocialService = require('../services/socialService');
 
 // @desc    Fetch all articles
@@ -10,29 +9,49 @@ const getArticles = async (req, res) => {
   try {
     const pageSize = 12;
     const page = Number(req.query.pageNumber) || 1;
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
 
-    // Build filter object
-    const keyword = req.query.keyword
-      ? {
-          title: {
-            $regex: req.query.keyword,
-            $options: 'i',
-          },
-        }
-      : {};
+    let query = supabase
+      .from('articles')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    // Apply Filters
+    if (req.query.category) {
+        query = query.eq('category', req.query.category);
+    }
     
-    const category = req.query.category 
-        ? { category: req.query.category } 
-        : {};
+    if (req.query.keyword) {
+        query = query.ilike('title', `%${req.query.keyword}%`);
+    }
 
-    const count = await Article.countDocuments({ ...keyword, ...category });
-    const articles = await Article.find({ ...keyword, ...category })
-      .sort({ createdAt: -1 }) // Newest first
-      .limit(pageSize)
-      .skip(pageSize * (page - 1));
+    const { data: articles, count, error } = await query;
 
-    res.json({ articles, page, pages: Math.ceil(count / pageSize) });
+    if (error) throw error;
+
+    // Map DB fields to Frontend expected format (camelCase)
+    const formattedArticles = articles.map(a => ({
+        _id: a.id,
+        title: a.title,
+        excerpt: a.excerpt,
+        category: a.category,
+        author: a.author_name,
+        imageUrl: a.image_url,
+        views: a.views,
+        createdAt: a.created_at,
+        isBreaking: a.is_breaking,
+        readTime: a.read_time
+    }));
+
+    res.json({ 
+        articles: formattedArticles, 
+        page, 
+        pages: Math.ceil(count / pageSize) 
+    });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -42,10 +61,21 @@ const getArticles = async (req, res) => {
 // @access  Public
 const getArticleById = async (req, res) => {
   try {
-    const article = await Article.findById(req.params.id);
+    const { data: article, error } = await supabase
+        .from('articles')
+        .select('*')
+        .eq('id', req.params.id)
+        .single();
 
     if (article) {
-      res.json(article);
+      // Format for frontend
+      res.json({
+          ...article,
+          _id: article.id,
+          imageUrl: article.image_url,
+          author: article.author_name,
+          createdAt: article.created_at
+      });
     } else {
       res.status(404).json({ message: 'Article not found' });
     }
@@ -54,29 +84,39 @@ const getArticleById = async (req, res) => {
   }
 };
 
-// @desc    Create new comment
+// @desc    Create new comment (Requires Comment Table in Supabase)
 // @route   POST /api/articles/:id/comments
 // @access  Private
 const createArticleComment = async (req, res) => {
   try {
     const { text } = req.body;
-    const article = await Article.findById(req.params.id);
+    
+    // Insert comment
+    const { data: comment, error } = await supabase
+        .from('comments')
+        .insert([{
+            user_id: req.user.id,
+            article_id: req.params.id,
+            text: text
+        }])
+        .select(`
+            *,
+            users (name, avatar_url)
+        `)
+        .single();
 
-    if (article) {
-      const comment = new Comment({
-        user: req.user._id,
-        articleId: req.params.id,
-        text,
-      });
+    if (error) throw error;
 
-      const savedComment = await comment.save();
-      // Populate user info for immediate frontend display if needed
-      await savedComment.populate('user', 'name avatarUrl');
-
-      res.status(201).json(savedComment);
-    } else {
-      res.status(404).json({ message: 'Article not found' });
-    }
+    // Format for frontend
+    res.status(201).json({
+        _id: comment.id,
+        text: comment.text,
+        createdAt: comment.created_at,
+        user: {
+            name: comment.users?.name,
+            avatarUrl: comment.users?.avatar_url
+        }
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -87,11 +127,30 @@ const createArticleComment = async (req, res) => {
 // @access  Public
 const getArticleComments = async (req, res) => {
     try {
-        const comments = await Comment.find({ articleId: req.params.id })
-            .populate('user', 'name avatarUrl')
-            .sort({ createdAt: -1 });
+        const { data: comments, error } = await supabase
+            .from('comments')
+            .select(`
+                id,
+                text,
+                created_at,
+                users (name, avatar_url)
+            `)
+            .eq('article_id', req.params.id)
+            .order('created_at', { ascending: false });
         
-        res.json(comments);
+        if (error) throw error;
+
+        const formatted = comments.map(c => ({
+            _id: c.id,
+            text: c.text,
+            createdAt: c.created_at,
+            user: {
+                name: c.users?.name,
+                avatarUrl: c.users?.avatar_url
+            }
+        }));
+
+        res.json(formatted);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -102,25 +161,29 @@ const getArticleComments = async (req, res) => {
 // @access  Private/Admin
 const createArticle = async (req, res) => {
     try {
-        const article = new Article({
-            title: req.body.title,
-            excerpt: req.body.excerpt,
-            category: req.body.category,
-            author: req.body.author, // Assuming string name here for manual entry
-            authorId: req.user._id,  // Link to admin user
-            imageUrl: req.body.imageUrl,
-            readTime: req.body.readTime,
-            content: req.body.content || "Full content would go here...",
-            views: 0,
-            isBreaking: req.body.isBreaking || false
-        });
+        const { data: article, error } = await supabase
+            .from('articles')
+            .insert([{
+                title: req.body.title,
+                excerpt: req.body.excerpt,
+                category: req.body.category,
+                author_name: req.body.author, 
+                image_url: req.body.imageUrl,
+                read_time: req.body.readTime,
+                content: req.body.content || "Content...",
+                is_breaking: req.body.isBreaking || false,
+                views: 0
+            }])
+            .select()
+            .single();
 
-        const createdArticle = await article.save();
+        if (error) throw error;
 
-        // Broadcast to Social Media (Async)
-        SocialService.broadcast(createdArticle).catch(err => console.error("Social Broadcast Error:", err));
+        // Broadcast (keeping existing service)
+        const formattedArticle = { ...article, _id: article.id, imageUrl: article.image_url };
+        SocialService.broadcast(formattedArticle).catch(err => console.error("Social Broadcast Error:", err));
 
-        res.status(201).json(createdArticle);
+        res.status(201).json(formattedArticle);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -131,16 +194,29 @@ const createArticle = async (req, res) => {
 // @access  Public
 const incrementArticleViews = async (req, res) => {
     try {
-        const article = await Article.findByIdAndUpdate(
-            req.params.id,
-            { $inc: { views: 1 } },
-            { new: true }
-        );
-        if (article) {
-            res.json({ views: article.views });
-        } else {
-            res.status(404).json({ message: 'Article not found' });
-        }
+        // RPC call is better for atomicity, but standard update works for simple cases
+        // Assuming you created a Postgres function `increment_views`
+        // Or fetch, update, save pattern (less atomic)
+        
+        // Simple fetch-update for now
+        const { data: article } = await supabase
+            .from('articles')
+            .select('views')
+            .eq('id', req.params.id)
+            .single();
+            
+        if (!article) return res.status(404).json({ message: 'Article not found' });
+
+        const newViews = (article.views || 0) + 1;
+
+        const { error } = await supabase
+            .from('articles')
+            .update({ views: newViews })
+            .eq('id', req.params.id);
+
+        if (error) throw error;
+
+        res.json({ views: newViews });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

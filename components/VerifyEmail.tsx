@@ -3,6 +3,16 @@ import React, { useEffect, useState } from 'react';
 import { CheckCircle, XCircle, Loader2, ArrowRight } from 'lucide-react';
 import Button from './Button';
 
+// Safe Environment variable access
+const getApiUrl = () => {
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  return 'http://localhost:5000';
+};
+
+const API_URL = getApiUrl();
+
 const VerifyEmail: React.FC = () => {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Verifying your email...');
@@ -22,7 +32,7 @@ const VerifyEmail: React.FC = () => {
 
       try {
         // Attempt to call backend
-        const response = await fetch(`http://localhost:5000/api/auth/verify/${token}`);
+        const response = await fetch(`${API_URL}/api/auth/verify/${token}`);
         const data = await response.json();
 
         if (response.ok) {

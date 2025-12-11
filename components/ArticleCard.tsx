@@ -7,6 +7,16 @@ import Button from './Button';
 import { MOCK_SERIES, MOCK_SPONSORED_CONTENT } from '../constants';
 import { generateArticlePoll } from '../services/geminiService';
 
+// Safe Environment variable access
+const getApiUrl = () => {
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  return 'http://localhost:5000';
+};
+
+const API_URL = getApiUrl();
+
 interface ArticleCardProps {
   article: Article;
   layout?: 'vertical' | 'horizontal';
@@ -280,7 +290,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
   const fetchComments = async () => {
       setLoadingComments(true);
       try {
-          const res = await fetch(`http://localhost:5000/api/articles/${article.id}/comments`);
+          const res = await fetch(`${API_URL}/api/articles/${article.id}/comments`);
           if (res.ok) {
               const data = await res.json();
               setComments(data);
@@ -306,7 +316,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
               token = parsed.token;
           }
 
-          const res = await fetch(`http://localhost:5000/api/articles/${article.id}/comments`, {
+          const res = await fetch(`${API_URL}/api/articles/${article.id}/comments`, {
               method: 'POST',
               headers: {
                   'Content-Type': 'application/json',

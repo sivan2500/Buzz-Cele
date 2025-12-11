@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import Footer from './components/Footer';
@@ -31,6 +32,16 @@ import { Article, Author, Series, User, RadioStation, AppNotification } from './
 import { generateGossipArticles } from './services/geminiService';
 import { checkNotificationPermission, requestNotificationPermission, sendNotification, simulateIncomingPush } from './services/notificationService';
 import { Sparkles, RefreshCw, Bookmark, ArrowLeft, X, TrendingUp, ArrowRight, Loader2 } from 'lucide-react';
+
+// Safe Environment variable access
+const getApiUrl = () => {
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  return 'http://localhost:5000';
+};
+
+const API_URL = getApiUrl();
 
 export default function App() {
   const [articles, setArticles] = useState<Article[]>(MOCK_ARTICLES);
@@ -73,7 +84,7 @@ export default function App() {
   useEffect(() => {
     const fetchArticles = async () => {
         try {
-            const res = await fetch('http://localhost:5000/api/articles'); 
+            const res = await fetch(`${API_URL}/api/articles`); 
             if (!res.ok) return; 
             const data = await res.json();
             

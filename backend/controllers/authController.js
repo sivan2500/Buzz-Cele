@@ -1,7 +1,8 @@
 
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs'); // Keep bcrypt for password hashing
 const crypto = require('crypto');
-const User = require('../models/User');
+const supabase = require('../config/supabase'); // Import Supabase client
 const sendEmail = require('../utils/sendEmail');
 
 const generateToken = (id) => {
@@ -17,28 +18,42 @@ const authUser = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    const user = await User.findOne({ email });
+    // SUPABASE: Fetch user by email
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
 
-    if (user && (await user.matchPassword(password))) {
-      
+    if (error || !user) {
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    // Compare hashed password
+    // Note: In a full Supabase migration, you might switch to supabase.auth.signInWithPassword()
+    // But here we maintain your existing auth flow with the new DB.
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (isMatch) {
       // Verification Check
-      if (!user.isVerified) {
+      if (!user.is_verified) {
           return res.status(401).json({ message: 'Please verify your email address before logging in.' });
       }
 
       res.json({
-        _id: user._id,
+        _id: user.id,
         name: user.name,
         email: user.email,
-        avatarUrl: user.avatarUrl,
-        isAdmin: user.isAdmin,
-        isPremium: user.isPremium,
-        token: generateToken(user._id),
+        avatarUrl: user.avatar_url,
+        isAdmin: user.is_admin,
+        isPremium: user.is_premium,
+        token: generateToken(user.id),
       });
     } else {
       res.status(401).json({ message: 'Invalid email or password' });
     }
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -50,27 +65,48 @@ const registerUser = async (req, res) => {
   const { name, email, password, avatarUrl } = req.body;
 
   try {
-    const userExists = await User.findOne({ email });
+    // Check if user exists
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('email')
+      .eq('email', email)
+      .single();
 
-    if (userExists) {
+    if (existingUser) {
       return res.status(400).json({ message: 'User already exists' });
     }
+
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
 
     // Generate random verification token
     const verificationToken = crypto.randomBytes(20).toString('hex');
 
-    const user = await User.create({
-      name,
-      email,
-      password,
-      avatarUrl,
-      verificationToken,
-      isVerified: false // Explicitly set to false
-    });
+    // Insert new user
+    const { data: newUser, error: insertError } = await supabase
+      .from('users')
+      .insert([
+        {
+          name,
+          email,
+          password: hashedPassword,
+          avatar_url: avatarUrl,
+          verification_token: verificationToken,
+          is_verified: false,
+          is_admin: false,
+          is_premium: false
+        }
+      ])
+      .select()
+      .single();
 
-    if (user) {
+    if (insertError) {
+      throw insertError;
+    }
+
+    if (newUser) {
       // Send Verification Email
-      // Use FRONTEND_URL if set, otherwise default to Vite dev port (5173) for proper link generation
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
       const verifyUrl = `${frontendUrl}/#verify/${verificationToken}`;
 
@@ -82,19 +118,20 @@ const registerUser = async (req, res) => {
       `;
 
       await sendEmail({
-        email: user.email,
+        email: newUser.email,
         subject: 'BuzzCelebDaily - Verify your email',
         message
       });
 
       res.status(201).json({
         message: 'Registration successful! Please check your email to verify your account.',
-        email: user.email
+        email: newUser.email
       });
     } else {
       res.status(400).json({ message: 'Invalid user data' });
     }
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -104,15 +141,22 @@ const registerUser = async (req, res) => {
 // @access  Public
 const verifyEmail = async (req, res) => {
     try {
-        const user = await User.findOne({ verificationToken: req.params.token });
+        const { data: user, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('verification_token', req.params.token)
+            .single();
 
-        if (!user) {
+        if (error || !user) {
             return res.status(400).json({ message: 'Invalid or expired verification token' });
         }
 
-        user.isVerified = true;
-        user.verificationToken = undefined;
-        await user.save();
+        const { error: updateError } = await supabase
+            .from('users')
+            .update({ is_verified: true, verification_token: null })
+            .eq('id', user.id);
+
+        if (updateError) throw updateError;
 
         res.json({ message: 'Email verified successfully', success: true });
     } catch (error) {
@@ -125,18 +169,23 @@ const verifyEmail = async (req, res) => {
 // @access  Private
 const getUserProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    // req.user is set by authMiddleware (needs update as well, see below)
+    const { data: user, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', req.user.id)
+        .single();
 
     if (user) {
       res.json({
-        _id: user._id,
+        _id: user.id,
         name: user.name,
         email: user.email,
-        avatarUrl: user.avatarUrl,
-        bookmarks: user.bookmarks,
-        followedCategories: user.followedCategories,
-        isAdmin: user.isAdmin,
-        isPremium: user.isPremium
+        avatarUrl: user.avatar_url,
+        bookmarks: user.bookmarks || [],
+        followedCategories: user.followed_categories || [],
+        isAdmin: user.is_admin,
+        isPremium: user.is_premium
       });
     } else {
       res.status(404).json({ message: 'User not found' });
@@ -147,4 +196,3 @@ const getUserProfile = async (req, res) => {
 };
 
 module.exports = { authUser, registerUser, verifyEmail, getUserProfile };
-    
