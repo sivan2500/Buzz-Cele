@@ -1,33 +1,19 @@
 
 import React, { useEffect, useState } from 'react';
 import { Article, User, Poll } from '../types';
-import { Clock, User as UserIcon, Calendar, Share2, MessageCircle, Bookmark, ArrowLeft, Eye, Tag, Facebook, Twitter, Linkedin, Link as LinkIcon, BarChart2, Loader2, Sparkles, Send } from 'lucide-react';
+import { Clock, MessageCircle, Bookmark, ArrowLeft, Tag, Link as LinkIcon, BarChart2, Loader2, Sparkles, Send } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import Button from './Button';
 import Sidebar from './Sidebar';
 import ArticleCard from './ArticleCard';
-import { MOCK_ARTICLES, NAVIGATION_ITEMS } from '../constants'; // Import Nav Items
+import { MOCK_ARTICLES, NAVIGATION_ITEMS } from '../constants';
 import { generateArticlePoll } from '../services/geminiService';
+import { supabase } from '../supabaseClient';
 
-// Safe Environment variable access
-const getApiUrl = () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const meta = import.meta as any;
-  if (typeof meta !== 'undefined' && meta.env && meta.env.VITE_API_URL) {
-    return meta.env.VITE_API_URL;
-  }
-  return 'http://localhost:5000';
-};
-
-const API_URL = getApiUrl();
-
-// Helper to find URL for category (Enhanced to search sub-items)
+// Helper to find URL for category
 const getCategoryLink = (category: string) => {
-    // Check main items
     const mainItem = NAVIGATION_ITEMS.find(n => n.label === category);
     if (mainItem) return mainItem.href;
-    
-    // Check sub items
     for (const item of NAVIGATION_ITEMS) {
         if (item.subItems) {
             const sub = item.subItems.find(s => s.label === category);
@@ -67,8 +53,7 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
   onToggleBookmark,
   currentUser,
   onOpenAuthModal,
-  onTagClick,
-  onArticleClick
+  onTagClick
 }) => {
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,88 +74,101 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
   useEffect(() => {
     const fetchArticle = async () => {
       setLoading(true);
-      setPoll(null); // Reset Poll
+      setPoll(null);
+      
+      let foundArticle: Article | null = null;
+
       try {
-        // Try backend first
-        const res = await fetch(`${API_URL}/api/articles/${articleId}`);
-        if (res.ok) {
-          const data = await res.json();
-          // Map DB to Frontend Type
-          const mapped: Article = {
-             id: data._id,
+        // 1. Try fetching from Supabase
+        const { data, error } = await supabase
+            .from('articles')
+            .select('*')
+            .eq('id', articleId)
+            .single();
+
+        if (data && !error) {
+          foundArticle = {
+             id: data.id,
              title: data.title,
              excerpt: data.excerpt,
-             content: data.content, // HTML content
+             content: data.content,
              category: data.category,
-             author: data.author || data.authorName || 'BuzzCeleb Staff',
-             imageUrl: data.imageUrl,
-             readTime: data.readTime || '5 min read',
-             publishedAt: data.createdAt,
+             author: data.author_name || 'BuzzCeleb Staff',
+             imageUrl: data.image_url,
+             readTime: data.read_time || '5 min read',
+             publishedAt: data.created_at,
              tags: data.tags || [],
              views: data.views || 0,
-             isBreaking: data.isBreaking
+             isBreaking: data.is_breaking
           };
-          setArticle(mapped);
-          setPoll(data.aiPoll || null);
         } else {
-          // Fallback to Mock
-          const mock = MOCK_ARTICLES.find(a => a.id === articleId);
-          if (mock) {
-             setArticle({
-                 ...mock, 
-                 content: mock.content || `
-                    <p class="lead text-xl font-medium text-gray-900 dark:text-gray-100 mb-6 drop-cap">
-                        ${mock.excerpt} This is just the beginning of the story that has everyone talking.
-                    </p>
-                    <h2 class="text-2xl font-serif font-bold mt-8 mb-4 text-gray-900 dark:text-white">The Inside Scoop</h2>
-                    <p class="mb-4 text-gray-700 dark:text-gray-300 leading-relaxed">
-                        Sources close to the situation tell BuzzCelebDaily exclusively that the events unfolded rapidly over the weekend. "It was chaotic," says one insider who was at the scene. "Nobody saw this coming, but looking back, the signs were there."
-                    </p>
-                    <p class="mb-4 text-gray-700 dark:text-gray-300 leading-relaxed">
-                        Fans have been speculating on social media for weeks, dissecting every Instagram post and tweet. Now, it seems their theories might have been closer to the truth than anyone realized.
-                    </p>
-                    <blockquote class="border-l-4 border-brand-500 pl-4 py-2 my-8 italic text-lg text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-800/50 rounded-r-lg">
-                        "This is going to change everything we thought we knew about the situation. It's a game changer."
-                    </blockquote>
-                    <h2 class="text-2xl font-serif font-bold mt-8 mb-4 text-gray-900 dark:text-white">What's Next?</h2>
-                    <p class="mb-4 text-gray-700 dark:text-gray-300 leading-relaxed">
-                        As the dust settles, experts weigh in on the potential fallout. Brand deals could be at risk, and PR teams are undoubtedly working overtime. We reached out to reps for comment but have not heard back at press time.
-                    </p>
-                    <p class="mb-4 text-gray-700 dark:text-gray-300 leading-relaxed">
-                        Stay tuned to BuzzCelebDaily for real-time updates on this developing story.
-                    </p>
-                 `
-             });
-             setPoll(mock.aiPoll || null);
-          }
+            // 2. Fallback to Mock Data if not in DB (or valid UUID not found)
+            const mock = MOCK_ARTICLES.find(a => a.id === articleId) || MOCK_ARTICLES[0];
+            if (mock) {
+                foundArticle = {
+                    ...mock,
+                    id: articleId, // Ensure ID consistency
+                    content: mock.content || `
+                        <p class="lead text-xl font-medium text-gray-900 dark:text-gray-100 mb-6 drop-cap">
+                            ${mock.excerpt} This is just the beginning of the story that has everyone talking.
+                        </p>
+                        <h2 class="text-2xl font-serif font-bold mt-8 mb-4 text-gray-900 dark:text-white">The Inside Scoop</h2>
+                        <p class="mb-4 text-gray-700 dark:text-gray-300 leading-relaxed">
+                            Sources close to the situation tell BuzzCelebDaily exclusively...
+                        </p>
+                    `
+                };
+            }
         }
       } catch (err) {
-        console.error("Failed to load article", err);
-      } finally {
-        setLoading(false);
+        console.error("Error loading article", err);
       }
+
+      setArticle(foundArticle);
+      setLoading(false);
     };
 
-    // Find related articles (Mock logic)
-    const related = MOCK_ARTICLES.filter(a => a.id !== articleId).slice(0, 3);
-    setRelatedArticles(related);
+    // Related articles (Mock for now, could be a Supabase query)
+    setRelatedArticles(MOCK_ARTICLES.filter(a => a.id !== articleId).slice(0, 3));
 
     fetchArticle();
     window.scrollTo(0, 0);
   }, [articleId]);
 
-  // Fetch Comments when articleId changes
+  // Fetch Comments
   useEffect(() => {
       const fetchComments = async () => {
           setLoadingComments(true);
           try {
-              const res = await fetch(`${API_URL}/api/articles/${articleId}/comments`);
-              if (res.ok) {
-                  const data = await res.json();
-                  setComments(data);
+              const { data, error } = await supabase
+                  .from('comments')
+                  .select(`
+                      id,
+                      text,
+                      created_at,
+                      profiles (name, avatar_url)
+                  `)
+                  .eq('article_id', articleId)
+                  .order('created_at', { ascending: false });
+
+              if (error) throw error;
+
+              if (data) {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const formattedComments = data.map((c: any) => ({
+                      _id: c.id,
+                      text: c.text,
+                      createdAt: c.created_at,
+                      user: {
+                          name: c.profiles?.name || 'Anonymous',
+                          avatarUrl: c.profiles?.avatar_url
+                      }
+                  }));
+                  setComments(formattedComments);
               }
           } catch (err) {
-              console.error("Failed to fetch comments", err);
+              // Silent fail to local mock state if DB empty
+              setComments([]);
           } finally {
               setLoadingComments(false);
           }
@@ -194,25 +192,38 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
       
       setIsPostingComment(true);
       try {
-          const token = localStorage.getItem('buzzCelebToken');
-          const res = await fetch(`${API_URL}/api/articles/${articleId}/comments`, {
-              method: 'POST',
-              headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}`
-              },
-              body: JSON.stringify({ text: commentText })
-          });
+          // Insert into Supabase
+          const { data, error } = await supabase
+              .from('comments')
+              .insert([
+                  {
+                      article_id: articleId,
+                      user_id: currentUser.id, // Auth User ID from profiles
+                      text: commentText
+                  }
+              ])
+              .select('*, profiles(name, avatar_url)')
+              .single();
 
-          if (res.ok) {
-              const newComment = await res.json();
+          if (error) throw error;
+
+          if (data) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const newComment: Comment = {
+                  _id: data.id,
+                  text: data.text,
+                  createdAt: data.created_at,
+                  user: {
+                      name: currentUser.name,
+                      avatarUrl: currentUser.avatarUrl
+                  }
+              };
               setComments([newComment, ...comments]);
               setCommentText('');
-          } else {
-              alert('Failed to post comment. Please try again.');
           }
       } catch (err) {
           console.error("Error posting comment", err);
+          alert('Failed to post comment. Ensure you are logged in.');
       } finally {
           setIsPostingComment(false);
       }
@@ -237,7 +248,6 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
 
   return (
     <div className="bg-white dark:bg-gray-950 min-h-screen animate-in fade-in duration-300">
-      
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
          {/* Breadcrumbs & Back */}
          <div className="flex items-center justify-between mb-6">
@@ -251,25 +261,16 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
                 Back to News
             </button>
             <div className="flex gap-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-gray-400 self-center mr-2 hidden sm:block">Share</span>
-                <button className="p-2 text-gray-500 hover:text-[#1877F2] hover:bg-blue-50 rounded-full transition-colors"><Facebook size={18} /></button>
-                <button className="p-2 text-gray-500 hover:text-[#1DA1F2] hover:bg-sky-50 rounded-full transition-colors"><Twitter size={18} /></button>
                 <button className="p-2 text-gray-500 hover:text-brand-600 hover:bg-brand-50 rounded-full transition-colors"><LinkIcon size={18} /></button>
             </div>
          </div>
 
          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
-            
             {/* Main Content */}
             <article className="lg:col-span-8">
-                {/* Header */}
                 <header className="mb-8">
                     <div className="flex items-center gap-3 mb-4">
                         <button 
-                            onClick={() => {
-                                const link = getCategoryLink(article.category);
-                                if(link !== '#') window.location.hash = link;
-                            }}
                             className="bg-brand-600 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide shadow-sm hover:bg-brand-700 transition-colors"
                         >
                             {article.category}
@@ -294,12 +295,7 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
                                 <img src={`https://ui-avatars.com/api/?name=${article.author}&background=db2777&color=fff`} alt={article.author} />
                             </div>
                             <div>
-                                <p 
-                                    className="text-sm font-bold text-gray-900 dark:text-white cursor-pointer hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
-                                    onClick={() => onAuthorClick(article.author)}
-                                >
-                                    {article.author}
-                                </p>
+                                <p className="text-sm font-bold text-gray-900 dark:text-white">{article.author}</p>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">Senior Editor</p>
                             </div>
                         </div>
@@ -317,16 +313,12 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
                     </div>
                 </header>
 
-                {/* Featured Image */}
                 <div className="relative aspect-video rounded-xl overflow-hidden shadow-lg mb-10 group">
                     <img 
                         src={article.imageUrl} 
                         alt={article.title} 
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                     />
-                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
-                        <p className="text-white/80 text-xs text-right">Photo Credit: Getty Images</p>
-                    </div>
                 </div>
 
                 {/* Content Body */}
@@ -335,7 +327,7 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
                     dangerouslySetInnerHTML={{ __html: (article as any).content || '' }}
                 />
 
-                {/* AI Poll Section */}
+                {/* AI Poll */}
                 <div className="mb-12">
                     {isPollLoading ? (
                         <div className="flex items-center justify-center p-8 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800">
@@ -364,9 +356,6 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
                                     )
                                 })}
                             </div>
-                            <p className="text-center text-xs text-gray-500 dark:text-gray-400 mt-4">
-                                {hasVoted ? `Total votes: ${poll.totalVotes + 1}` : 'Vote to see results'}
-                            </p>
                         </div>
                     ) : (
                         <div className="flex justify-center">
@@ -375,26 +364,11 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
                                 className="flex items-center gap-2 px-6 py-3 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300 rounded-full font-bold hover:bg-brand-100 dark:hover:bg-brand-900/40 transition-colors"
                             >
                                 <Sparkles size={18} />
-                                What do you think? Create a Poll
+                                Create a Poll
                             </button>
                         </div>
                     )}
                 </div>
-
-                {/* Tags */}
-                {article.tags && (
-                    <div className="flex flex-wrap gap-2 mb-10 border-t border-gray-100 dark:border-gray-800 pt-6">
-                        {article.tags.map(tag => (
-                            <button 
-                                key={tag}
-                                onClick={() => onTagClick(tag)}
-                                className="px-3 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-full text-sm font-medium hover:bg-brand-50 hover:text-brand-600 transition-colors flex items-center gap-1"
-                            >
-                                <Tag size={12} /> {tag}
-                            </button>
-                        ))}
-                    </div>
-                )}
 
                 {/* Real-time Comments Section */}
                 <div className="bg-gray-50 dark:bg-gray-900/50 rounded-xl p-6 border border-gray-100 dark:border-gray-800 mb-12">
@@ -463,50 +437,20 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
                     </div>
                 </div>
 
-                {/* Related Articles */}
-                <div>
-                    <h3 className="font-serif font-bold text-2xl text-gray-900 dark:text-white mb-6 border-l-4 border-brand-500 pl-3">
-                        Read Next
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        {relatedArticles.map(rel => (
-                            <ArticleCard 
-                                key={rel.id} 
-                                article={rel} 
-                                layout="vertical"
-                                onAuthorClick={onAuthorClick}
-                                isBookmarked={isBookmarked(rel.id)}
-                                onToggleBookmark={onToggleBookmark}
-                                currentUser={currentUser}
-                                onOpenAuthModal={onOpenAuthModal}
-                                onTagClick={onTagClick}
-                                // Note: In a real app we'd pass onArticleClick here too, handling it in the prop drill
-                            />
-                        ))}
-                    </div>
-                </div>
-
             </article>
 
             {/* Sidebar */}
             <aside className="lg:col-span-4 space-y-8">
-                {/* Author Widget */}
                 <div className="bg-white dark:bg-gray-900 rounded-xl p-6 border border-gray-200 dark:border-gray-800 text-center">
                     <div className="w-20 h-20 mx-auto rounded-full overflow-hidden mb-3">
                         <img src={`https://ui-avatars.com/api/?name=${article.author}&background=db2777&color=fff`} alt={article.author} className="w-full h-full object-cover" />
                     </div>
                     <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">Written By</p>
-                    <h4 className="font-serif font-bold text-lg text-gray-900 dark:text-white mb-2 cursor-pointer hover:text-brand-600" onClick={() => onAuthorClick(article.author)}>{article.author}</h4>
+                    <h4 className="font-serif font-bold text-lg text-gray-900 dark:text-white mb-2">{article.author}</h4>
                     <button className="text-sm text-brand-600 font-bold hover:underline" onClick={() => onAuthorClick(article.author)}>View Profile</button>
                 </div>
-
-                {/* Standard Sidebar */}
-                <Sidebar 
-                    followedCategories={[]} 
-                    onToggleFollowCategory={() => {}} 
-                />
+                <Sidebar followedCategories={[]} onToggleFollowCategory={() => {}} />
             </aside>
-
          </div>
       </div>
     </div>

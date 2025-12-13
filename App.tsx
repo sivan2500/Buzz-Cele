@@ -5,7 +5,6 @@ import Footer from './components/Footer';
 import ArticleCard from './components/ArticleCard';
 import ArticleDetail from './components/ArticleDetail';
 import Sidebar from './components/Sidebar';
-import Button from './components/Button';
 import NewsletterModal from './components/NewsletterModal';
 import AuthModal from './components/AuthModal';
 import AuthorProfile from './components/AuthorProfile';
@@ -33,18 +32,8 @@ import { Article, Author, Series, User, RadioStation, AppNotification } from './
 import { generateGossipArticles } from './services/geminiService';
 import { checkNotificationPermission, requestNotificationPermission, sendNotification, simulateIncomingPush } from './services/notificationService';
 import { Sparkles, RefreshCw, X, ArrowRight, Loader2 } from 'lucide-react';
-
-// Safe Environment variable access
-const getApiUrl = () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const meta = import.meta as any;
-  if (typeof meta !== 'undefined' && meta.env && meta.env.VITE_API_URL) {
-    return meta.env.VITE_API_URL;
-  }
-  return 'http://localhost:5000';
-};
-
-const API_URL = getApiUrl();
+import { supabase } from './supabaseClient';
+import Button from './components/Button';
 
 export default function App() {
   const [articles, setArticles] = useState<Article[]>(MOCK_ARTICLES);
@@ -85,34 +74,38 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('All');
   const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
 
-  // --- FETCH REAL ARTICLES FROM BACKEND ---
+  // --- FETCH REAL ARTICLES FROM SUPABASE ---
   useEffect(() => {
     const fetchArticles = async () => {
         try {
-            const res = await fetch(`${API_URL}/api/articles`); 
-            if (!res.ok) return; 
-            const data = await res.json();
+            // Direct query to Supabase 'articles' table
+            const { data, error } = await supabase
+                .from('articles')
+                .select('*')
+                .order('created_at', { ascending: false });
             
-            if (data.articles && Array.isArray(data.articles)) {
+            if (data && !error) {
+                // Map snake_case SQL columns to camelCase Typescript interface
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const dbArticles = data.articles.map((a: any) => ({
-                    id: a._id, 
+                const dbArticles = data.map((a: any) => ({
+                    id: a.id, 
                     title: a.title,
                     excerpt: a.excerpt,
                     category: a.category,
                     subcategory: a.subcategory,
-                    author: a.author || a.authorName || 'BuzzCeleb Staff',
-                    publishedAt: a.createdAt,
-                    imageUrl: a.imageUrl,
-                    isBreaking: a.isBreaking,
-                    readTime: a.readTime || '3 min read',
+                    author: a.author_name || 'BuzzCeleb Staff',
+                    publishedAt: a.created_at,
+                    imageUrl: a.image_url,
+                    isBreaking: a.is_breaking,
+                    readTime: a.read_time || '3 min read',
                     tags: a.tags || [],
-                    aiPoll: a.aiPoll
                 }));
+                // Combine DB articles with Mocks (or replace mocks entirely if preferred)
                 setArticles([...dbArticles, ...MOCK_ARTICLES]);
             }
         } catch (e) {
-            console.log("Backend offline, using mock data.");
+            console.error("Failed to fetch articles:", e);
+            // Fallback to MOCK_ARTICLES (already in state)
         }
     };
 
@@ -136,14 +129,26 @@ export default function App() {
         console.error("Failed to parse followed categories", e);
       }
     }
-    const savedUser = localStorage.getItem('buzzCelebUser');
-    if (savedUser) {
-        try {
-            setCurrentUser(JSON.parse(savedUser));
-        } catch (e) {
-            console.error("Failed to parse user", e);
+    
+    // Check for Supabase Session on Load
+    supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user) {
+            // Fetch profile
+            supabase.from('profiles').select('*').eq('id', session.user.id).single()
+            .then(({ data: profile }) => {
+                if (profile) {
+                    setCurrentUser({
+                        id: session.user.id,
+                        email: session.user.email || '',
+                        name: profile.name || 'User',
+                        avatarUrl: profile.avatar_url,
+                        isPremium: profile.is_premium
+                    });
+                }
+            });
         }
-    }
+    });
+
     const savedTheme = localStorage.getItem('buzzCelebTheme');
     if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
         setIsDarkMode(true);
@@ -174,9 +179,8 @@ export default function App() {
   useEffect(() => {
     const handleHashChange = () => {
       const rawHash = window.location.hash;
-      const hash = decodeURIComponent(rawHash); // Handle spaces in authors/categories
+      const hash = decodeURIComponent(rawHash);
       
-      // 1. Article View
       if (hash.startsWith('#article-')) {
           const id = hash.replace('#article-', '');
           setSelectedArticleId(id);
@@ -185,7 +189,6 @@ export default function App() {
           return;
       }
 
-      // 2. Author Profile
       if (hash.startsWith('#author-')) {
           const authorName = hash.replace('#author-', '');
           const author = MOCK_AUTHORS.find(a => a.name === authorName);
@@ -197,7 +200,6 @@ export default function App() {
           return;
       }
 
-      // 3. Series View
       if (hash.startsWith('#series-')) {
           const seriesId = hash.replace('#series-', '');
           const series = MOCK_SERIES.find(s => s.id === seriesId);
@@ -209,7 +211,6 @@ export default function App() {
           return;
       }
 
-      // 4. Static Pages
       if (hash.startsWith('#verify/')) {
           setCurrentView('verify');
           window.scrollTo(0, 0);
@@ -230,10 +231,7 @@ export default function App() {
           return;
       }
 
-      // 5. Category / Nav Links (The fix for your issue)
       let foundCategory = false;
-      
-      // Check main navigation items
       const mainItem = NAVIGATION_ITEMS.find(item => item.href === hash);
       if (mainItem) {
           setCurrentView('home');
@@ -243,15 +241,14 @@ export default function App() {
           foundCategory = true;
       }
 
-      // Check sub-items if not found
       if (!foundCategory) {
           for (const item of NAVIGATION_ITEMS) {
               if (item.subItems) {
                   const subItem = item.subItems.find(sub => sub.href === hash);
                   if (subItem) {
                       setCurrentView('home');
-                      setActiveTab(item.label); // Set Parent Tab active
-                      setActiveSubTab(subItem.label); // Set Sub Tab active
+                      setActiveTab(item.label); 
+                      setActiveSubTab(subItem.label); 
                       setSelectedTag(null);
                       foundCategory = true;
                       break;
@@ -265,7 +262,6 @@ export default function App() {
           return;
       }
 
-      // 6. Default to Home
       if (hash === '' || hash === '#') {
         setCurrentView('home');
         setActiveTab('All');
@@ -276,9 +272,9 @@ export default function App() {
     };
 
     window.addEventListener('hashchange', handleHashChange);
-    handleHashChange(); // Check on mount
+    handleHashChange(); 
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []); // Depend on nothing to avoid loops, reading from MOCK/constants is safe
+  }, []); 
 
   useEffect(() => { localStorage.setItem('buzzCelebFollowedCategories', JSON.stringify(followedCategories)); }, [followedCategories]);
   useEffect(() => { localStorage.setItem('buzzCelebBookmarks', JSON.stringify(bookmarkedIds)); }, [bookmarkedIds]);
@@ -313,9 +309,16 @@ export default function App() {
     }, 1500);
   };
   
-  const handleLogin = (user: User) => { setCurrentUser(user); localStorage.setItem('buzzCelebUser', JSON.stringify(user)); };
-  const handleLogout = () => { setCurrentUser(null); localStorage.removeItem('buzzCelebUser'); setCurrentView('home'); window.location.hash = ''; };
-  const handleUpgradeToPremium = () => { if (currentUser) { const updatedUser = { ...currentUser, isPremium: true }; setCurrentUser(updatedUser); localStorage.setItem('buzzCelebUser', JSON.stringify(updatedUser)); sendNotification("Welcome to Premium!", { body: "You are now an Insider+ member." }); }};
+  const handleLogin = (user: User) => { setCurrentUser(user); };
+  
+  const handleLogout = async () => { 
+      await supabase.auth.signOut();
+      setCurrentUser(null); 
+      setCurrentView('home'); 
+      window.location.hash = ''; 
+  };
+  
+  const handleUpgradeToPremium = () => { if (currentUser) { const updatedUser = { ...currentUser, isPremium: true }; setCurrentUser(updatedUser); sendNotification("Welcome to Premium!", { body: "You are now an Insider+ member." }); }};
   const toggleBookmark = (id: string) => { setBookmarkedIds(prev => prev.includes(id) ? prev.filter(bId => bId !== id) : [...prev, id]); };
   const toggleFollowCategory = (id: string) => { setFollowedCategories(prev => prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]); if (!followedCategories.includes(id) && notificationPermission === 'default') { setShowNotificationPrompt(true); } };
   const isBookmarked = (id: string) => bookmarkedIds.includes(id);
@@ -332,20 +335,15 @@ export default function App() {
     if (activeSubTab) { return filtered.filter(article => article.subcategory === activeSubTab); }
     if (activeTab === 'All') return filtered;
     
-    // Get allowed categories for the current tab
     const activeNavItem = NAVIGATION_ITEMS.find(item => item.label === activeTab);
     const allowedCategories = new Set<string>();
     allowedCategories.add(activeTab);
     if (activeNavItem && activeNavItem.subItems) { activeNavItem.subItems.forEach(sub => allowedCategories.add(sub.label)); }
     
     return filtered.filter(article => {
-        // Direct Match
         if (allowedCategories.has(article.category)) return true;
-        // Subcategory Match
         if (article.subcategory && allowedCategories.has(article.subcategory)) return true;
-        // Loose Match (e.g. "Wealth" vs "Money")
         if (activeTab === 'Wealth' && article.category === 'Money') return true;
-        // Search Match
         if (article.category.toLowerCase().includes(activeTab.toLowerCase())) return true;
         return false;
     });
@@ -364,16 +362,9 @@ export default function App() {
     } catch (err) { setError("Failed to fetch fresh gossip."); } finally { setIsGenerating(false); }
   };
 
-  // Nav Handlers that simply update Hash (The router useEffect handles the rest)
-  const handleAuthorClick = (authorName: string) => { 
-      window.location.hash = `#author-${encodeURIComponent(authorName)}`; 
-  };
-  const handleSeriesClick = (seriesId: string) => { 
-      window.location.hash = `#series-${seriesId}`; 
-  };
-  const handleArticleClick = (id: string) => {
-      window.location.hash = `#article-${id}`;
-  };
+  const handleAuthorClick = (authorName: string) => { window.location.hash = `#author-${encodeURIComponent(authorName)}`; };
+  const handleSeriesClick = (seriesId: string) => { window.location.hash = `#series-${seriesId}`; };
+  const handleArticleClick = (id: string) => { window.location.hash = `#article-${id}`; };
   
   const handleBackToFeed = () => { window.location.hash = ''; };
   const handleOpenDashboard = () => { if (currentUser) { setCurrentView('dashboard'); window.scrollTo(0, 0); } else { setIsAuthModalOpen(true); } };
@@ -395,7 +386,6 @@ export default function App() {
     if (currentView === 'sub-terms') return <SubscriptionTerms />;
     if (currentView === 'disclaimer') return <Disclaimer />;
 
-    // ARTICLE VIEW
     if (currentView === 'article' && selectedArticleId) {
         return (
             <ArticleDetail
@@ -525,7 +515,6 @@ export default function App() {
             </section>
           )}
 
-          {/* AI Banner */}
           <section aria-labelledby="ai-banner-title" className="mb-16 bg-gradient-to-r from-gray-900 via-brand-900 to-gray-900 rounded-2xl p-8 text-white relative overflow-hidden shadow-2xl">
               <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
               <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
@@ -566,7 +555,6 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
             
             <div className="lg:col-span-8">
-                {/* Tabs / Filters */}
                 <div className="flex flex-col mb-8 border-b border-gray-100 dark:border-gray-800 pb-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0 mb-4">
                     <div className="flex items-center gap-4">
@@ -580,7 +568,6 @@ export default function App() {
                             role="tab" 
                             aria-selected={activeTab === tab && !selectedTag} 
                             onClick={() => { 
-                                // Directly map tab name to navigation items to find href
                                 const navItem = NAVIGATION_ITEMS.find(n => n.label === tab);
                                 if (navItem) window.location.hash = navItem.href;
                                 else if (tab === 'All') window.location.hash = '';
@@ -662,44 +649,73 @@ export default function App() {
   };
 
   return (
-      <>
-        <SearchOverlay 
-          isOpen={isSearchOpen}
-          onClose={() => setIsSearchOpen(false)}
-          articles={articles}
-          onAuthorClick={handleAuthorClick}
-          isBookmarked={isBookmarked}
-          onToggleBookmark={toggleBookmark}
-          currentUser={currentUser}
-          onOpenAuthModal={() => setIsAuthModalOpen(true)}
-          onTagClick={handleTagClick}
-          onArticleClick={(id) => { setIsSearchOpen(false); handleArticleClick(id); }}
+    <div className={`min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white transition-colors duration-300 font-sans`}>
+      <Header 
+        onOpenBookmarks={handleOpenDashboard} 
+        onSearchClick={() => setIsSearchOpen(true)}
+        bookmarkCount={bookmarkedIds.length}
+        currentUser={currentUser}
+        onLoginClick={() => setIsAuthModalOpen(true)}
+        onLogoutClick={handleLogout}
+        unreadNotificationCount={notifications.filter(n => !n.isRead).length}
+        isDarkMode={isDarkMode}
+        toggleTheme={toggleTheme}
+      />
+
+      <main>
+        {renderCurrentView()}
+      </main>
+
+      <Footer />
+
+      <AuthModal 
+        isOpen={isAuthModalOpen} 
+        onClose={() => setIsAuthModalOpen(false)} 
+        onLogin={handleLogin} 
+      />
+      
+      <NewsletterModal />
+      
+      <SearchOverlay 
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        articles={articles}
+        onArticleClick={handleArticleClick}
+        onAuthorClick={handleAuthorClick}
+        isBookmarked={isBookmarked}
+        onToggleBookmark={toggleBookmark}
+        currentUser={currentUser}
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onTagClick={handleTagClick}
+      />
+      
+      {viewingStoryId && activeStory && (
+        <StoryViewer 
+          story={activeStory}
+          onClose={() => setViewingStoryId(null)}
+          onNext={handleNextStory}
+          onPrev={handlePrevStory}
         />
+      )}
 
-        <NewsletterModal />
-        <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onLogin={(user) => { handleLogin(user); setIsAuthModalOpen(false); }} />
-        <SubscriptionModal isOpen={isSubscriptionModalOpen} onClose={() => setIsSubscriptionModalOpen(false)} onUpgrade={handleUpgradeToPremium} />
-        {currentStation && <GlobalPlayer station={currentStation} isPlaying={isRadioPlaying} onTogglePlay={handleToggleRadioPlay} onClose={handleCloseRadio} />}
-        <NotificationPrompt isVisible={showNotificationPrompt} onAllow={handleAllowNotifications} onDeny={handleDenyNotifications} />
-        {viewingStoryId && activeStory && <StoryViewer story={activeStory} onClose={() => setViewingStoryId(null)} onNext={handleNextStory} onPrev={handlePrevStory} />}
+      <GlobalPlayer 
+        station={currentStation}
+        isPlaying={isRadioPlaying}
+        onTogglePlay={handleToggleRadioPlay}
+        onClose={handleCloseRadio}
+      />
 
-        <Header 
-          onOpenBookmarks={handleOpenDashboard}
-          onSearchClick={() => setIsSearchOpen(true)}
-          bookmarkCount={bookmarkedIds.length}
-          currentUser={currentUser}
-          onLoginClick={() => setIsAuthModalOpen(true)}
-          onLogoutClick={handleLogout}
-          unreadNotificationCount={notifications.filter(n => !n.isRead).length}
-          isDarkMode={isDarkMode}
-          toggleTheme={toggleTheme}
-        />
-        
-        <main className="min-h-screen pt-4">
-          {renderCurrentView()}
-        </main>
+      <NotificationPrompt 
+        isVisible={showNotificationPrompt}
+        onAllow={handleAllowNotifications}
+        onDeny={handleDenyNotifications}
+      />
 
-        <Footer />
-      </>
+      <SubscriptionModal 
+        isOpen={isSubscriptionModalOpen}
+        onClose={() => setIsSubscriptionModalOpen(false)}
+        onUpgrade={handleUpgradeToPremium}
+      />
+    </div>
   );
-};
+}
