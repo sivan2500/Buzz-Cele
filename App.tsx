@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import ArticleCard from './components/ArticleCard';
+import ArticleDetail from './components/ArticleDetail';
 import Sidebar from './components/Sidebar';
 import Button from './components/Button';
 import NewsletterModal from './components/NewsletterModal';
@@ -27,11 +28,11 @@ import Disclaimer from './components/Disclaimer';
 import VerifyEmail from './components/VerifyEmail';
 import SubscriptionModal from './components/SubscriptionModal';
 import SeoHead from './components/SeoHead';
-import { MOCK_ARTICLES, NAVIGATION_ITEMS, MOCK_AUTHORS, MOCK_SERIES, MOCK_STORIES, GOOGLE_TRENDING_DATA } from './constants';
+import { MOCK_ARTICLES, NAVIGATION_ITEMS, MOCK_AUTHORS, MOCK_SERIES, MOCK_STORIES } from './constants';
 import { Article, Author, Series, User, RadioStation, AppNotification } from './types';
 import { generateGossipArticles } from './services/geminiService';
 import { checkNotificationPermission, requestNotificationPermission, sendNotification, simulateIncomingPush } from './services/notificationService';
-import { Sparkles, RefreshCw, Bookmark, ArrowLeft, X, TrendingUp, ArrowRight, Loader2 } from 'lucide-react';
+import { Sparkles, RefreshCw, X, ArrowRight, Loader2 } from 'lucide-react';
 
 // Safe Environment variable access
 const getApiUrl = () => {
@@ -51,7 +52,9 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [gossipTopic, setGossipTopic] = useState('');
   
-  const [currentView, setCurrentView] = useState<'home' | 'author' | 'dashboard' | 'series' | 'live' | 'privacy' | 'terms' | 'about' | 'contact' | 'advertise' | 'do-not-sell' | 'sub-terms' | 'disclaimer' | 'verify'>('home');
+  // Expanded View State
+  const [currentView, setCurrentView] = useState<'home' | 'article' | 'author' | 'dashboard' | 'series' | 'live' | 'privacy' | 'terms' | 'about' | 'contact' | 'advertise' | 'do-not-sell' | 'sub-terms' | 'disclaimer' | 'verify'>('home');
+  const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
   const [selectedAuthor, setSelectedAuthor] = useState<Author | null>(null);
   const [selectedSeries, setSelectedSeries] = useState<Series | null>(null);
   const [bookmarkedIds, setBookmarkedIds] = useState<string[]>([]);
@@ -91,6 +94,7 @@ export default function App() {
             const data = await res.json();
             
             if (data.articles && Array.isArray(data.articles)) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const dbArticles = data.articles.map((a: any) => ({
                     id: a._id, 
                     title: a.title,
@@ -124,7 +128,6 @@ export default function App() {
         console.error("Failed to parse bookmarks", e);
       }
     }
-
     const savedFollowedCats = localStorage.getItem('buzzCelebFollowedCategories');
     if (savedFollowedCats) {
       try {
@@ -133,7 +136,6 @@ export default function App() {
         console.error("Failed to parse followed categories", e);
       }
     }
-    
     const savedUser = localStorage.getItem('buzzCelebUser');
     if (savedUser) {
         try {
@@ -142,12 +144,10 @@ export default function App() {
             console.error("Failed to parse user", e);
         }
     }
-
     const savedTheme = localStorage.getItem('buzzCelebTheme');
     if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
         setIsDarkMode(true);
     }
-
     const perm = checkNotificationPermission();
     setNotificationPermission(perm);
     if (perm === 'default') {
@@ -170,214 +170,182 @@ export default function App() {
     setIsDarkMode(!isDarkMode);
   };
 
+  // --- ROUTING LOGIC ---
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash;
+      const rawHash = window.location.hash;
+      const hash = decodeURIComponent(rawHash); // Handle spaces in authors/categories
+      
+      // 1. Article View
+      if (hash.startsWith('#article-')) {
+          const id = hash.replace('#article-', '');
+          setSelectedArticleId(id);
+          setCurrentView('article');
+          window.scrollTo(0, 0);
+          return;
+      }
+
+      // 2. Author Profile
+      if (hash.startsWith('#author-')) {
+          const authorName = hash.replace('#author-', '');
+          const author = MOCK_AUTHORS.find(a => a.name === authorName);
+          if (author) {
+              setSelectedAuthor(author);
+              setCurrentView('author');
+              window.scrollTo(0, 0);
+          }
+          return;
+      }
+
+      // 3. Series View
+      if (hash.startsWith('#series-')) {
+          const seriesId = hash.replace('#series-', '');
+          const series = MOCK_SERIES.find(s => s.id === seriesId);
+          if (series) {
+              setSelectedSeries(series);
+              setCurrentView('series');
+              window.scrollTo(0, 0);
+          }
+          return;
+      }
+
+      // 4. Static Pages
       if (hash.startsWith('#verify/')) {
           setCurrentView('verify');
           window.scrollTo(0, 0);
           return;
       }
-      if (hash === '#live' || hash === '#live-tv' || hash === '#live-radio') {
-        setCurrentView('live');
-        window.scrollTo(0, 0);
-      } else if (hash === '#privacy') {
-        setCurrentView('privacy');
-        window.scrollTo(0, 0);
-      } else if (hash === '#terms') {
-        setCurrentView('terms');
-        window.scrollTo(0, 0);
-      } else if (hash === '#about') {
-        setCurrentView('about');
-        window.scrollTo(0, 0);
-      } else if (hash === '#contact') {
-        setCurrentView('contact');
-        window.scrollTo(0, 0);
-      } else if (hash === '#advertise') {
-        setCurrentView('advertise');
-        window.scrollTo(0, 0);
-      } else if (hash === '#do-not-sell') {
-        setCurrentView('do-not-sell');
-        window.scrollTo(0, 0);
-      } else if (hash === '#sub-terms') {
-        setCurrentView('sub-terms');
-        window.scrollTo(0, 0);
-      } else if (hash === '#disclaimer') {
-        setCurrentView('disclaimer');
-        window.scrollTo(0, 0);
-      } else if (hash === '' || hash === '#') {
+      
+      const staticMap: Record<string, any> = {
+          '#live': 'live', '#live-tv': 'live', '#live-radio': 'live',
+          '#privacy': 'privacy', '#terms': 'terms', '#about': 'about',
+          '#contact': 'contact', '#advertise': 'advertise',
+          '#do-not-sell': 'do-not-sell', '#sub-terms': 'sub-terms',
+          '#disclaimer': 'disclaimer'
+      };
+
+      if (staticMap[hash]) {
+          setCurrentView(staticMap[hash]);
+          window.scrollTo(0, 0);
+          return;
+      }
+
+      // 5. Category / Nav Links (The fix for your issue)
+      let foundCategory = false;
+      
+      // Check main navigation items
+      const mainItem = NAVIGATION_ITEMS.find(item => item.href === hash);
+      if (mainItem) {
+          setCurrentView('home');
+          setActiveTab(mainItem.label);
+          setActiveSubTab(null);
+          setSelectedTag(null);
+          foundCategory = true;
+      }
+
+      // Check sub-items if not found
+      if (!foundCategory) {
+          for (const item of NAVIGATION_ITEMS) {
+              if (item.subItems) {
+                  const subItem = item.subItems.find(sub => sub.href === hash);
+                  if (subItem) {
+                      setCurrentView('home');
+                      setActiveTab(item.label); // Set Parent Tab active
+                      setActiveSubTab(subItem.label); // Set Sub Tab active
+                      setSelectedTag(null);
+                      foundCategory = true;
+                      break;
+                  }
+              }
+          }
+      }
+
+      if (foundCategory) {
+          window.scrollTo(0, 0);
+          return;
+      }
+
+      // 6. Default to Home
+      if (hash === '' || hash === '#') {
         setCurrentView('home');
+        setActiveTab('All');
+        setActiveSubTab(null);
+        setSelectedTag(null);
+        window.scrollTo(0, 0);
       }
     };
 
     window.addEventListener('hashchange', handleHashChange);
-    handleHashChange();
+    handleHashChange(); // Check on mount
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  }, []); // Depend on nothing to avoid loops, reading from MOCK/constants is safe
 
-  useEffect(() => {
-    localStorage.setItem('buzzCelebFollowedCategories', JSON.stringify(followedCategories));
-  }, [followedCategories]);
-
-  useEffect(() => {
-    localStorage.setItem('buzzCelebBookmarks', JSON.stringify(bookmarkedIds));
-  }, [bookmarkedIds]);
-
+  useEffect(() => { localStorage.setItem('buzzCelebFollowedCategories', JSON.stringify(followedCategories)); }, [followedCategories]);
+  useEffect(() => { localStorage.setItem('buzzCelebBookmarks', JSON.stringify(bookmarkedIds)); }, [bookmarkedIds]);
+  
   useEffect(() => {
     if (notificationPermission === 'granted') {
-      const cleanup = simulateIncomingPush((title, body, category) => {
+      const cleanup = simulateIncomingPush((title, body) => {
         sendNotification(title, { body });
-        const newNotif: AppNotification = {
-           id: Date.now().toString(),
-           title: title,
-           message: body,
-           timestamp: new Date().toISOString(),
-           isRead: false,
-           type: title.includes('BREAKING') ? 'breaking' : 'alert'
-        };
+        const newNotif: AppNotification = { id: Date.now().toString(), title: title, message: body, timestamp: new Date().toISOString(), isRead: false, type: title.includes('BREAKING') ? 'breaking' : 'alert' };
         setNotifications(prev => [newNotif, ...prev]);
       });
       return cleanup;
     }
   }, [notificationPermission, followedCategories]);
-
+  
   useEffect(() => {
-    const observer = new IntersectionObserver(
-        (entries) => {
-            if (entries[0].isIntersecting && !isLoadingMore && currentView === 'home') {
-                loadMoreArticles();
-            }
-        },
-        { threshold: 0.1 }
-    );
-
-    if (loadingRef.current) {
-        observer.observe(loadingRef.current);
-    }
-
+    const observer = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting && !isLoadingMore && currentView === 'home') loadMoreArticles();
+        }, { threshold: 0.1 });
+    if (loadingRef.current) observer.observe(loadingRef.current);
     return () => observer.disconnect();
   }, [isLoadingMore, currentView, articles]);
 
   const loadMoreArticles = () => {
     if (isLoadingMore) return;
     setIsLoadingMore(true);
-
     setTimeout(() => {
-        const newBatch = MOCK_ARTICLES.map((article, index) => ({
-            ...article,
-            id: `scroll-${Date.now()}-${index}`,
-            title: article.title,
-            publishedAt: new Date(Date.now() - 100000000 * (index + 20)).toISOString(),
-            isBreaking: false
-        }));
-        
+        const newBatch = MOCK_ARTICLES.map((article, index) => ({ ...article, id: `scroll-${Date.now()}-${index}`, title: article.title, publishedAt: new Date(Date.now() - 100000000 * (index + 20)).toISOString(), isBreaking: false }));
         const shuffled = newBatch.sort(() => 0.5 - Math.random()).slice(0, 6);
         setArticles(prev => [...prev, ...shuffled]);
         setIsLoadingMore(false);
     }, 1500);
   };
   
-  const handleLogin = (user: User) => {
-      setCurrentUser(user);
-      localStorage.setItem('buzzCelebUser', JSON.stringify(user));
-  };
-  
-  const handleLogout = () => {
-      setCurrentUser(null);
-      localStorage.removeItem('buzzCelebUser');
-      setCurrentView('home');
-      window.location.hash = '';
-  };
-
-  const handleUpgradeToPremium = () => {
-      if (currentUser) {
-          const updatedUser = { ...currentUser, isPremium: true };
-          setCurrentUser(updatedUser);
-          localStorage.setItem('buzzCelebUser', JSON.stringify(updatedUser));
-          sendNotification("Welcome to Premium!", { body: "You are now an Insider+ member." });
-      }
-  };
-
-  const toggleBookmark = (id: string) => {
-    setBookmarkedIds(prev => 
-      prev.includes(id) ? prev.filter(bId => bId !== id) : [...prev, id]
-    );
-  };
-
-  const toggleFollowCategory = (id: string) => {
-    setFollowedCategories(prev => 
-      prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]
-    );
-    if (!followedCategories.includes(id) && notificationPermission === 'default') {
-      setShowNotificationPrompt(true);
-    }
-  };
-
+  const handleLogin = (user: User) => { setCurrentUser(user); localStorage.setItem('buzzCelebUser', JSON.stringify(user)); };
+  const handleLogout = () => { setCurrentUser(null); localStorage.removeItem('buzzCelebUser'); setCurrentView('home'); window.location.hash = ''; };
+  const handleUpgradeToPremium = () => { if (currentUser) { const updatedUser = { ...currentUser, isPremium: true }; setCurrentUser(updatedUser); localStorage.setItem('buzzCelebUser', JSON.stringify(updatedUser)); sendNotification("Welcome to Premium!", { body: "You are now an Insider+ member." }); }};
+  const toggleBookmark = (id: string) => { setBookmarkedIds(prev => prev.includes(id) ? prev.filter(bId => bId !== id) : [...prev, id]); };
+  const toggleFollowCategory = (id: string) => { setFollowedCategories(prev => prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]); if (!followedCategories.includes(id) && notificationPermission === 'default') { setShowNotificationPrompt(true); } };
   const isBookmarked = (id: string) => bookmarkedIds.includes(id);
-
-  const handleAllowNotifications = async () => {
-    const granted = await requestNotificationPermission();
-    setNotificationPermission(granted ? 'granted' : 'denied');
-    setShowNotificationPrompt(false);
-    if (granted) {
-      sendNotification("Notifications Enabled", { body: "You'll now get breaking gossip alerts!" });
-    }
-  };
-
-  const handleDenyNotifications = () => {
-    setShowNotificationPrompt(false);
-  };
-
-  const handleSelectStation = (station: RadioStation) => {
-    setCurrentStation(station);
-    setIsRadioPlaying(true);
-  };
-
-  const handleToggleRadioPlay = () => {
-    setIsRadioPlaying(!isRadioPlaying);
-  };
-
-  const handleCloseRadio = () => {
-    setCurrentStation(null);
-    setIsRadioPlaying(false);
-  };
-
-  const handleTagClick = (tag: string) => {
-    setSelectedTag(tag);
-    setCurrentView('home');
-    setActiveTab('All'); 
-    window.location.hash = '';
-    window.scrollTo(0, 0);
-  };
+  const handleAllowNotifications = async () => { const granted = await requestNotificationPermission(); setNotificationPermission(granted ? 'granted' : 'denied'); setShowNotificationPrompt(false); if (granted) { sendNotification("Notifications Enabled", { body: "You'll now get breaking gossip alerts!" }); } };
+  const handleDenyNotifications = () => { setShowNotificationPrompt(false); };
+  const handleSelectStation = (station: RadioStation) => { setCurrentStation(station); setIsRadioPlaying(true); };
+  const handleToggleRadioPlay = () => { setIsRadioPlaying(!isRadioPlaying); };
+  const handleCloseRadio = () => { setCurrentStation(null); setIsRadioPlaying(false); };
+  const handleTagClick = (tag: string) => { setSelectedTag(tag); setCurrentView('home'); setActiveTab('All'); window.location.hash = ''; window.scrollTo(0, 0); };
 
   const filteredArticles = useMemo(() => {
     let filtered = articles;
-
-    if (selectedTag) {
-      filtered = filtered.filter(article => article.tags?.includes(selectedTag));
-      return filtered;
-    }
-
-    if (activeSubTab) {
-        return filtered.filter(article => article.subcategory === activeSubTab);
-    }
-
+    if (selectedTag) { filtered = filtered.filter(article => article.tags?.includes(selectedTag)); return filtered; }
+    if (activeSubTab) { return filtered.filter(article => article.subcategory === activeSubTab); }
     if (activeTab === 'All') return filtered;
-
+    
+    // Get allowed categories for the current tab
     const activeNavItem = NAVIGATION_ITEMS.find(item => item.label === activeTab);
     const allowedCategories = new Set<string>();
     allowedCategories.add(activeTab);
+    if (activeNavItem && activeNavItem.subItems) { activeNavItem.subItems.forEach(sub => allowedCategories.add(sub.label)); }
     
-    if (activeNavItem && activeNavItem.subItems) {
-      activeNavItem.subItems.forEach(sub => allowedCategories.add(sub.label));
-    }
-
     return filtered.filter(article => {
-        if (activeTab === 'Wealth' && article.category === 'Wealth') return true;
-        if (activeTab === 'Tech' && article.category === 'Tech') return true;
-        
+        // Direct Match
         if (allowedCategories.has(article.category)) return true;
+        // Subcategory Match
         if (article.subcategory && allowedCategories.has(article.subcategory)) return true;
+        // Loose Match (e.g. "Wealth" vs "Money")
+        if (activeTab === 'Wealth' && article.category === 'Money') return true;
+        // Search Match
         if (article.category.toLowerCase().includes(activeTab.toLowerCase())) return true;
         return false;
     });
@@ -391,79 +359,29 @@ export default function App() {
     setError(null);
     try {
       const newArticles = await generateGossipArticles(gossipTopic);
-      if (newArticles.length > 0) {
-        setArticles(prev => [...newArticles, ...prev]);
-        setGossipTopic('');
-      } else {
-        setError("AI is taking a coffee break. Try again in a moment.");
-      }
-    } catch (err) {
-      setError("Failed to fetch fresh gossip.");
-    } finally {
-      setIsGenerating(false);
-    }
+      if (newArticles.length > 0) { setArticles(prev => [...newArticles, ...prev]); setGossipTopic(''); } 
+      else { setError("AI is taking a coffee break. Try again in a moment."); }
+    } catch (err) { setError("Failed to fetch fresh gossip."); } finally { setIsGenerating(false); }
   };
 
-  const handleAuthorClick = (authorName: string) => {
-    const author = MOCK_AUTHORS.find(a => a.name === authorName);
-    if (author) {
-      setSelectedAuthor(author);
-      setCurrentView('author');
-      window.scrollTo(0, 0);
-    } else {
-      console.warn(`Author profile not found for: ${authorName}`);
-    }
+  // Nav Handlers that simply update Hash (The router useEffect handles the rest)
+  const handleAuthorClick = (authorName: string) => { 
+      window.location.hash = `#author-${encodeURIComponent(authorName)}`; 
   };
-
-  const handleSeriesClick = (seriesId: string) => {
-    const series = MOCK_SERIES.find(s => s.id === seriesId);
-    if (series) {
-      setSelectedSeries(series);
-      setCurrentView('series');
-      window.scrollTo(0, 0);
-    }
-  }
-
-  const handleBackToFeed = () => {
-    setCurrentView('home');
-    setSelectedAuthor(null);
-    setSelectedSeries(null);
-    setSelectedTag(null);
-    window.location.hash = '';
-    window.scrollTo(0, 0);
+  const handleSeriesClick = (seriesId: string) => { 
+      window.location.hash = `#series-${seriesId}`; 
   };
-
-  const handleOpenDashboard = () => {
-    if (currentUser) {
-        setCurrentView('dashboard');
-        window.scrollTo(0, 0);
-    } else {
-        setIsAuthModalOpen(true);
-    }
+  const handleArticleClick = (id: string) => {
+      window.location.hash = `#article-${id}`;
   };
-
-  const handleClearNotifications = () => {
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-  };
-
-  const activeStory = viewingStoryId ? MOCK_STORIES.find(s => s.id === viewingStoryId) : null;
   
-  const handleNextStory = () => {
-    const currentIndex = MOCK_STORIES.findIndex(s => s.id === viewingStoryId);
-    if (currentIndex < MOCK_STORIES.length - 1) {
-      setViewingStoryId(MOCK_STORIES[currentIndex + 1].id);
-    } else {
-      setViewingStoryId(null);
-    }
-  };
-
-  const handlePrevStory = () => {
-    const currentIndex = MOCK_STORIES.findIndex(s => s.id === viewingStoryId);
-    if (currentIndex > 0) {
-      setViewingStoryId(MOCK_STORIES[currentIndex - 1].id);
-    }
-  };
-
+  const handleBackToFeed = () => { window.location.hash = ''; };
+  const handleOpenDashboard = () => { if (currentUser) { setCurrentView('dashboard'); window.scrollTo(0, 0); } else { setIsAuthModalOpen(true); } };
+  const handleClearNotifications = () => { setNotifications(prev => prev.map(n => ({ ...n, isRead: true }))); };
+  
+  const activeStory = viewingStoryId ? MOCK_STORIES.find(s => s.id === viewingStoryId) : null;
+  const handleNextStory = () => { const currentIndex = MOCK_STORIES.findIndex(s => s.id === viewingStoryId); if (currentIndex < MOCK_STORIES.length - 1) { setViewingStoryId(MOCK_STORIES[currentIndex + 1].id); } else { setViewingStoryId(null); } };
+  const handlePrevStory = () => { const currentIndex = MOCK_STORIES.findIndex(s => s.id === viewingStoryId); if (currentIndex > 0) { setViewingStoryId(MOCK_STORIES[currentIndex - 1].id); } };
   const activeNavItem = NAVIGATION_ITEMS.find(item => item.label === activeTab);
 
   const renderCurrentView = () => {
@@ -477,20 +395,28 @@ export default function App() {
     if (currentView === 'sub-terms') return <SubscriptionTerms />;
     if (currentView === 'disclaimer') return <Disclaimer />;
 
+    // ARTICLE VIEW
+    if (currentView === 'article' && selectedArticleId) {
+        return (
+            <ArticleDetail
+                articleId={selectedArticleId}
+                onBack={handleBackToFeed}
+                onAuthorClick={handleAuthorClick}
+                isBookmarked={isBookmarked}
+                onToggleBookmark={toggleBookmark}
+                currentUser={currentUser}
+                onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                onTagClick={handleTagClick}
+                onArticleClick={handleArticleClick}
+            />
+        );
+    }
+
     if (currentView === 'live') {
       return (
         <>
-          <SeoHead 
-            title="Live TV & Radio" 
-            description="Watch 24/7 celebrity news streams and listen to global music stations live on BuzzCelebDaily."
-            url={`${window.location.origin}/#live`}
-          />
-          <LiveView 
-            onSelectStation={handleSelectStation}
-            currentStation={currentStation}
-            isPlaying={isRadioPlaying}
-            onTogglePlay={handleToggleRadioPlay}
-          />
+          <SeoHead title="Live TV & Radio" description="Watch 24/7 celebrity news streams." url={`${window.location.origin}/#live`} />
+          <LiveView onSelectStation={handleSelectStation} currentStation={currentStation} isPlaying={isRadioPlaying} onTogglePlay={handleToggleRadioPlay} />
         </>
       );
     }
@@ -546,28 +472,12 @@ export default function App() {
 
     // Default Home View
     const displayArticles = selectedTag ? filteredArticles : (featuredArticle ? mainFeed : filteredArticles);
-
-    // Dynamic SEO for Home
     const pageTitle = selectedTag ? `#${selectedTag} News` : activeTab !== 'All' ? `${activeTab} News` : 'The Source for Celebrity News';
-    const pageDesc = `Latest ${activeTab} gossip, breaking news, and red carpet coverage. ${selectedTag ? `Explore posts about ${selectedTag}.` : ''}`;
+    const pageDesc = `Latest ${activeTab} gossip, breaking news, and red carpet coverage.`;
 
     return (
       <>
-        <SeoHead 
-            title={pageTitle}
-            description={pageDesc}
-            schema={{
-                "@context": "https://schema.org",
-                "@type": "WebSite",
-                "name": "BuzzCelebDaily",
-                "url": window.location.origin,
-                "potentialAction": {
-                    "@type": "SearchAction",
-                    "target": `${window.location.origin}/#search?q={search_term_string}`,
-                    "query-input": "required name=search_term_string"
-                }
-            }}
-        />
+        <SeoHead title={pageTitle} description={pageDesc} schema={{ "@context": "https://schema.org", "@type": "WebSite", "name": "BuzzCelebDaily", "url": window.location.origin }} />
 
         <StoryRail stories={MOCK_STORIES} onStoryClick={setViewingStoryId} />
 
@@ -585,6 +495,7 @@ export default function App() {
                   currentUser={currentUser}
                   onOpenAuthModal={() => setIsAuthModalOpen(true)}
                   onTagClick={handleTagClick}
+                  onArticleClick={handleArticleClick}
                 />
                 </div>
                 <div className="lg:col-span-1 flex flex-col gap-6">
@@ -605,6 +516,7 @@ export default function App() {
                           currentUser={currentUser}
                           onOpenAuthModal={() => setIsAuthModalOpen(true)}
                           onTagClick={handleTagClick}
+                          onArticleClick={handleArticleClick}
                         />
                     ))}
                     {mainFeed.length === 0 && <p className="text-gray-500 italic text-sm">No more stories in this category.</p>}
@@ -613,6 +525,7 @@ export default function App() {
             </section>
           )}
 
+          {/* AI Banner */}
           <section aria-labelledby="ai-banner-title" className="mb-16 bg-gradient-to-r from-gray-900 via-brand-900 to-gray-900 rounded-2xl p-8 text-white relative overflow-hidden shadow-2xl">
               <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
               <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
@@ -653,58 +566,41 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
             
             <div className="lg:col-span-8">
+                {/* Tabs / Filters */}
                 <div className="flex flex-col mb-8 border-b border-gray-100 dark:border-gray-800 pb-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0 mb-4">
                     <div className="flex items-center gap-4">
                        <h2 className="text-3xl font-serif font-bold text-gray-900 dark:text-gray-100">Latest News</h2>
-                       {selectedTag && (
-                         <button 
-                           onClick={() => setSelectedTag(null)}
-                           className="flex items-center gap-1.5 bg-brand-600 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide hover:bg-brand-700 transition-colors"
-                         >
-                           #{selectedTag} <X size={14} />
-                         </button>
-                       )}
+                       {selectedTag && <button onClick={() => setSelectedTag(null)} className="flex items-center gap-1.5 bg-brand-600 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide hover:bg-brand-700 transition-colors">#{selectedTag} <X size={14} /></button>}
                     </div>
-                    
                     <div role="tablist" aria-label="News Categories" className="flex flex-wrap gap-2">
                       {TABS.map(tab => (
                         <button 
-                          key={tab}
-                          role="tab"
-                          aria-selected={activeTab === tab && !selectedTag}
-                          aria-controls="news-feed-content"
-                          id={`tab-${tab}`}
-                          onClick={() => {
-                            setActiveTab(tab);
-                            setActiveSubTab(null);
-                            setSelectedTag(null);
-                          }}
-                          className={`px-4 py-1.5 text-xs font-bold rounded-full transition-all uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 dark:focus:ring-gray-100 ${
-                            activeTab === tab && !selectedTag
-                              ? 'bg-gray-900 text-white shadow-md dark:bg-gray-100 dark:text-gray-900' 
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200'
-                          }`}
+                            key={tab} 
+                            role="tab" 
+                            aria-selected={activeTab === tab && !selectedTag} 
+                            onClick={() => { 
+                                // Directly map tab name to navigation items to find href
+                                const navItem = NAVIGATION_ITEMS.find(n => n.label === tab);
+                                if (navItem) window.location.hash = navItem.href;
+                                else if (tab === 'All') window.location.hash = '';
+                            }} 
+                            className={`px-4 py-1.5 text-xs font-bold rounded-full transition-all uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 dark:focus:ring-gray-100 ${activeTab === tab && !selectedTag ? 'bg-gray-900 text-white shadow-md dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200'}`}
                         >
-                          {tab}
+                            {tab}
                         </button>
                       ))}
                     </div>
                   </div>
-
                   {activeNavItem?.subItems && (
                       <div className="flex flex-wrap gap-2 animate-in slide-in-from-top-1 duration-200">
                           {activeNavItem.subItems.map(sub => (
-                              <button
-                                  key={sub.label}
-                                  onClick={() => setActiveSubTab(activeSubTab === sub.label ? null : sub.label)}
-                                  className={`px-3 py-1 text-[10px] font-bold rounded-full border transition-colors ${
-                                      activeSubTab === sub.label
-                                      ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-900/30 dark:border-brand-800 dark:text-brand-400'
-                                      : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-                                  }`}
+                              <button 
+                                key={sub.label} 
+                                onClick={() => { window.location.hash = sub.href; }} 
+                                className={`px-3 py-1 text-[10px] font-bold rounded-full border transition-colors ${activeSubTab === sub.label ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-900/30 dark:border-brand-800 dark:text-brand-400' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-400 dark:hover:text-gray-300'}`}
                               >
-                                  {sub.label}
+                                {sub.label}
                               </button>
                           ))}
                       </div>
@@ -725,10 +621,9 @@ export default function App() {
                                 currentUser={currentUser}
                                 onOpenAuthModal={() => setIsAuthModalOpen(true)}
                                 onTagClick={handleTagClick}
+                                onArticleClick={handleArticleClick}
                             />
                           </div>
-                          
-                          {/* IN-FEED AD BANNER (Hide for Premium) */}
                           {(index + 1) % 4 === 0 && !currentUser?.isPremium && (
                             <div className="col-span-1 md:col-span-2 my-4">
                                <div className="w-full h-32 bg-gray-100 dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-700 rounded-lg flex items-center justify-center text-gray-400 dark:text-gray-500">
@@ -743,43 +638,21 @@ export default function App() {
                     ))
                   ) : (
                     <div className="col-span-1 md:col-span-2 text-center py-12 bg-gray-50 dark:bg-gray-900 rounded-lg border border-dashed border-gray-200 dark:border-gray-800">
-                        <p className="text-gray-500 dark:text-gray-400">
-                            No articles found
-                            {selectedTag ? ` for #${selectedTag}` : ''}
-                            {activeSubTab ? ` in ${activeSubTab}` : ' in this category'}
-                            . Try generating more!
-                        </p>
-                        {(selectedTag || activeSubTab) && (
-                           <Button variant="outline" size="sm" onClick={() => { setSelectedTag(null); setActiveSubTab(null); }} className="mt-4">
-                              Clear Filter
-                           </Button>
-                        )}
+                        <p className="text-gray-500 dark:text-gray-400">No articles found. Try generating more!</p>
+                        {(selectedTag || activeSubTab) && <Button variant="outline" size="sm" onClick={() => { setSelectedTag(null); setActiveSubTab(null); }} className="mt-4">Clear Filter</Button>}
                     </div>
                   )}
                 </div>
                 
                 {displayArticles.length > 0 && (
                     <div ref={loadingRef} className="mt-12 py-8 text-center flex flex-col items-center justify-center text-gray-400">
-                        {isLoadingMore ? (
-                             <>
-                                <Loader2 className="animate-spin mb-2 text-brand-500" size={24} />
-                                <span className="text-xs font-bold uppercase tracking-wide text-gray-500">Loading more gossip...</span>
-                             </>
-                        ) : (
-                            <span className="text-xs opacity-50">Scroll for more</span>
-                        )}
+                        {isLoadingMore ? <><Loader2 className="animate-spin mb-2 text-brand-500" size={24} /><span className="text-xs font-bold uppercase tracking-wide text-gray-500">Loading more gossip...</span></> : <span className="text-xs opacity-50">Scroll for more</span>}
                     </div>
                 )}
             </div>
 
             <aside className="lg:col-span-4 relative" aria-label="Sidebar">
-              <div>
-                <Sidebar 
-                  onSeriesClick={handleSeriesClick} 
-                  followedCategories={followedCategories}
-                  onToggleFollowCategory={toggleFollowCategory}
-                />
-              </div>
+              <div><Sidebar onSeriesClick={handleSeriesClick} followedCategories={followedCategories} onToggleFollowCategory={toggleFollowCategory} /></div>
             </aside>
 
           </div>
@@ -800,48 +673,15 @@ export default function App() {
           currentUser={currentUser}
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
           onTagClick={handleTagClick}
+          onArticleClick={(id) => { setIsSearchOpen(false); handleArticleClick(id); }}
         />
 
         <NewsletterModal />
-        
-        <AuthModal 
-          isOpen={isAuthModalOpen} 
-          onClose={() => setIsAuthModalOpen(false)} 
-          onLogin={(user) => {
-            handleLogin(user);
-            setIsAuthModalOpen(false);
-          }} 
-        />
-
-        <SubscriptionModal
-            isOpen={isSubscriptionModalOpen}
-            onClose={() => setIsSubscriptionModalOpen(false)}
-            onUpgrade={handleUpgradeToPremium}
-        />
-
-        {currentStation && (
-          <GlobalPlayer 
-            station={currentStation} 
-            isPlaying={isRadioPlaying} 
-            onTogglePlay={handleToggleRadioPlay}
-            onClose={handleCloseRadio}
-          />
-        )}
-
-        <NotificationPrompt 
-          isVisible={showNotificationPrompt} 
-          onAllow={handleAllowNotifications} 
-          onDeny={handleDenyNotifications} 
-        />
-
-        {viewingStoryId && activeStory && (
-          <StoryViewer 
-            story={activeStory} 
-            onClose={() => setViewingStoryId(null)} 
-            onNext={handleNextStory} 
-            onPrev={handlePrevStory}
-          />
-        )}
+        <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onLogin={(user) => { handleLogin(user); setIsAuthModalOpen(false); }} />
+        <SubscriptionModal isOpen={isSubscriptionModalOpen} onClose={() => setIsSubscriptionModalOpen(false)} onUpgrade={handleUpgradeToPremium} />
+        {currentStation && <GlobalPlayer station={currentStation} isPlaying={isRadioPlaying} onTogglePlay={handleToggleRadioPlay} onClose={handleCloseRadio} />}
+        <NotificationPrompt isVisible={showNotificationPrompt} onAllow={handleAllowNotifications} onDeny={handleDenyNotifications} />
+        {viewingStoryId && activeStory && <StoryViewer story={activeStory} onClose={() => setViewingStoryId(null)} onNext={handleNextStory} onPrev={handlePrevStory} />}
 
         <Header 
           onOpenBookmarks={handleOpenDashboard}

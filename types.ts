@@ -15,6 +15,7 @@ export interface Article {
   tags?: string[];
   affiliateProducts?: AffiliateProduct[];
   views?: number;
+  content?: string;
 }
 
 export enum Category {

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { MOCK_POLL, MOCK_SERIES, MOCK_ARTICLES, CURRENT_FASHION_BATTLE, UPCOMING_EVENTS } from '../constants';
-import { Mail, Layers, Flame, Bell, Calendar, Award, Music, Ticket, BarChart2 } from 'lucide-react';
+import { MOCK_POLL, MOCK_SERIES, MOCK_ARTICLES, CURRENT_FASHION_BATTLE, UPCOMING_EVENTS, NAVIGATION_ITEMS } from '../constants';
+import { Mail, Layers, Flame, Bell, Calendar, Award, Music, Ticket, BarChart2, Compass } from 'lucide-react';
 import Button from './Button';
 import { sendNotification } from '../services/notificationService';
 
@@ -34,6 +34,29 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <div className="space-y-8">
+
+      {/* Discover Categories Widget */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-brand-600 dark:text-brand-400">
+               <Compass size={18} aria-hidden="true" />
+            </span>
+            <h3 className="font-bold text-gray-900 dark:text-gray-100 font-sans">Discover</h3>
+          </div>
+        </div>
+        <div className="p-4 grid grid-cols-2 gap-2">
+           {NAVIGATION_ITEMS.filter(item => item.label !== 'LIVE').map((item) => (
+              <a 
+                key={item.label}
+                href={item.href}
+                className="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded transition-colors"
+              >
+                 {item.label}
+              </a>
+           ))}
+        </div>
+      </div>
 
       {/* Must-Read Series / Collections Widget */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
@@ -81,7 +104,11 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
         <div className="divide-y divide-gray-50 dark:divide-gray-800">
            {MOCK_ARTICLES.slice(0, 5).map((article, index) => (
-             <button key={article.id} className="w-full flex items-start gap-3 p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left group focus:outline-none focus:bg-gray-50 dark:focus:bg-gray-800">
+             <a 
+                key={article.id} 
+                href={`#article-${article.id}`}
+                className="w-full flex items-start gap-3 p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left group focus:outline-none focus:bg-gray-50 dark:focus:bg-gray-800 block"
+             >
                  <span className="text-2xl font-black text-gray-200 dark:text-gray-700 group-hover:text-red-500 font-serif leading-none mt-1 w-6 text-center shrink-0 transition-colors">
                    {index + 1}
                  </span>
@@ -94,7 +121,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       {article.title}
                     </h4>
                  </div>
-             </button>
+             </a>
            ))}
         </div>
       </div>
