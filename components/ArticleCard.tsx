@@ -179,7 +179,6 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
   onTagClick,
   onArticleClick 
 }) => {
-  // ... [Retain existing state logic for Polls, Comments] ...
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [poll, setPoll] = useState<Poll | null>(article.aiPoll || null);
   const [isPollLoading, setIsPollLoading] = useState(false);
@@ -224,6 +223,57 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
       e.stopPropagation();
       const link = getCategoryLink(article.category);
       if (link !== '#') window.location.hash = link;
+  };
+
+  const handleGeneratePoll = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsPollLoading(true);
+    const newPoll = await generateArticlePoll(article);
+    setPoll(newPoll);
+    setIsPollLoading(false);
+  };
+
+  const handleVotePoll = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setHasVotedPoll(true);
+  };
+
+  const PollSection = () => {
+    if (isPollLoading) return <div className="p-4 flex items-center justify-center"><Loader2 className="animate-spin text-brand-600" size={20} /></div>;
+    
+    if (poll) {
+        return (
+            <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700" onClick={e => e.stopPropagation()}>
+                <h4 className="font-bold text-sm mb-3 flex items-center gap-2 text-gray-900 dark:text-gray-100">
+                    <BarChart2 size={16} className="text-brand-600" />
+                    {poll.question}
+                </h4>
+                <div className="space-y-2">
+                    {poll.options.map(opt => {
+                        const pct = Math.round((opt.votes / poll.totalVotes) * 100) || 0;
+                        return (
+                            <button key={opt.id} onClick={handleVotePoll} className="w-full text-left text-xs relative h-8 bg-white dark:bg-gray-700 rounded overflow-hidden border border-gray-200 dark:border-gray-600 hover:border-brand-300 transition-colors">
+                                {hasVotedPoll && <div className="absolute top-0 left-0 h-full bg-brand-100 dark:bg-brand-900/50 transition-all duration-500" style={{ width: `${pct}%` }}></div>}
+                                <div className="absolute inset-0 flex items-center justify-between px-3 z-10 text-gray-800 dark:text-gray-200">
+                                    <span>{opt.label}</span>
+                                    {hasVotedPoll && <span className="font-bold">{pct}%</span>}
+                                </div>
+                            </button>
+                        )
+                    })}
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <button 
+            onClick={handleGeneratePoll}
+            className="mt-4 w-full py-2 bg-gray-50 dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-700 rounded-lg text-xs font-bold text-gray-500 hover:text-brand-600 hover:border-brand-300 transition-colors flex items-center justify-center gap-2"
+        >
+            <Sparkles size={14} /> Generate AI Poll
+        </button>
+    );
   };
 
   if (featured) {
@@ -319,6 +369,9 @@ const ArticleCard: React.FC<ArticleCardProps> = ({
              <ReactionButton emoji="😂" count={5} label="Funny" />
           </div>
         </div>
+        
+        {/* Poll Section - Vertical Only */}
+        <PollSection />
 
          <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 gap-3 pt-4 border-t border-gray-100 dark:border-gray-800 mt-auto">
              <button onClick={(e) => {e.stopPropagation(); onAuthorClick && onAuthorClick(article.author)}} className="flex items-center gap-1 font-medium text-gray-700 dark:text-gray-300 hover:text-brand-600"><UserIcon size={14} /> {article.author}</button>

@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { Article, Poll } from "../types";
 
@@ -14,8 +15,8 @@ export const generateGossipArticles = async (topic?: string): Promise<Article[]>
 
   try {
     const prompt = topic 
-      ? `Generate 4 realistic but fictional, high-drama celebrity gossip news headlines and short excerpts specifically about "${topic}". They should sound like they belong on a high-end entertainment news site.`
-      : "Generate 4 realistic but fictional, high-drama celebrity gossip news headlines and short excerpts. They should sound like they belong on a high-end entertainment news site.";
+      ? `Generate 4 realistic but fictional, high-drama celebrity gossip news stories specifically about "${topic}". They should sound like they belong on a high-end entertainment news site. Include a catchy title, a short excerpt, the full article content in HTML format (use <p>, <h2>, <blockquote> tags, approx 300 words), a category, an author name, and read time.`
+      : "Generate 4 realistic but fictional, high-drama celebrity gossip news stories. They should sound like they belong on a high-end entertainment news site. Include a catchy title, a short excerpt, the full article content in HTML format (use <p>, <h2>, <blockquote> tags, approx 300 words), a category, an author name, and read time.";
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -29,11 +30,12 @@ export const generateGossipArticles = async (topic?: string): Promise<Article[]>
             properties: {
               title: { type: Type.STRING },
               excerpt: { type: Type.STRING },
+              content: { type: Type.STRING },
               category: { type: Type.STRING },
               author: { type: Type.STRING },
               readTime: { type: Type.STRING },
             },
-            required: ["title", "excerpt", "category", "author", "readTime"],
+            required: ["title", "excerpt", "content", "category", "author", "readTime"],
           },
         },
       },
@@ -47,7 +49,7 @@ export const generateGossipArticles = async (topic?: string): Promise<Article[]>
       ...item,
       id: `generated-${Date.now()}-${index}`,
       publishedAt: new Date().toISOString(),
-      imageUrl: `https://picsum.photos/800/600?random=${index + 10}`,
+      imageUrl: `https://picsum.photos/800/600?random=${index + 10 + Date.now()}`,
       isBreaking: index === 0, // Make the first generated one breaking
       tags: topic ? [topic, 'AI Exclusive'] : ['AI Exclusive', 'Rumor'],
     }));
@@ -100,9 +102,11 @@ export const generateArticlePoll = async (article: Article): Promise<Poll | null
         if (!data.question || !data.options) return null;
 
         // Calculate total votes
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const totalVotes = data.options.reduce((sum: number, opt: any) => sum + (opt.votes || 0), 0);
         
         // Add IDs to options
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const optionsWithIds = data.options.map((opt: any, idx: number) => ({
             ...opt,
             id: `opt-${Date.now()}-${idx}`,

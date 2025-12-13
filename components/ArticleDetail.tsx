@@ -1,12 +1,13 @@
 
 import React, { useEffect, useState } from 'react';
-import { Article, User } from '../types';
-import { Clock, User as UserIcon, Calendar, Share2, MessageCircle, Bookmark, ArrowLeft, Eye, Tag, Facebook, Twitter, Linkedin, Link as LinkIcon } from 'lucide-react';
+import { Article, User, Poll } from '../types';
+import { Clock, User as UserIcon, Calendar, Share2, MessageCircle, Bookmark, ArrowLeft, Eye, Tag, Facebook, Twitter, Linkedin, Link as LinkIcon, BarChart2, Loader2, Sparkles } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import Button from './Button';
 import Sidebar from './Sidebar';
 import ArticleCard from './ArticleCard';
 import { MOCK_ARTICLES, NAVIGATION_ITEMS } from '../constants'; // Import Nav Items
+import { generateArticlePoll } from '../services/geminiService';
 
 // Safe Environment variable access
 const getApiUrl = () => {
@@ -62,10 +63,16 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
   const [relatedArticles, setRelatedArticles] = useState<Article[]>([]);
+  
+  // Poll State
+  const [poll, setPoll] = useState<Poll | null>(null);
+  const [isPollLoading, setIsPollLoading] = useState(false);
+  const [hasVoted, setHasVoted] = useState(false);
 
   useEffect(() => {
     const fetchArticle = async () => {
       setLoading(true);
+      setPoll(null); // Reset Poll
       try {
         // Try backend first
         const res = await fetch(`${API_URL}/api/articles/${articleId}`);
@@ -87,6 +94,7 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
              isBreaking: data.isBreaking
           };
           setArticle(mapped);
+          setPoll(data.aiPoll || null);
         } else {
           // Fallback to Mock
           const mock = MOCK_ARTICLES.find(a => a.id === articleId);
@@ -116,6 +124,7 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
                     </p>
                  `
              });
+             setPoll(mock.aiPoll || null);
           }
         }
       } catch (err) {
@@ -132,6 +141,16 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
     fetchArticle();
     window.scrollTo(0, 0);
   }, [articleId]);
+
+  const handleGeneratePoll = async () => {
+    if (!article) return;
+    setIsPollLoading(true);
+    const newPoll = await generateArticlePoll(article);
+    setPoll(newPoll);
+    setIsPollLoading(false);
+  };
+
+  const handleVote = () => setHasVoted(true);
 
   if (loading) {
       return (
@@ -251,6 +270,52 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
                     className="prose dark:prose-invert prose-lg max-w-none text-gray-800 dark:text-gray-200 prose-headings:font-serif prose-a:text-brand-600 hover:prose-a:text-brand-700 prose-img:rounded-xl mb-12"
                     dangerouslySetInnerHTML={{ __html: (article as any).content || '' }}
                 />
+
+                {/* AI Poll Section */}
+                <div className="mb-12">
+                    {isPollLoading ? (
+                        <div className="flex items-center justify-center p-8 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800">
+                            <Loader2 className="animate-spin text-brand-600" size={24} />
+                            <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">Generating poll...</span>
+                        </div>
+                    ) : poll ? (
+                        <div className="p-6 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                            <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-gray-900 dark:text-white">
+                                <BarChart2 size={20} className="text-brand-600" />
+                                {poll.question}
+                            </h3>
+                            <div className="space-y-3">
+                                {poll.options.map(opt => {
+                                    const pct = Math.round((opt.votes / poll.totalVotes) * 100) || 0;
+                                    return (
+                                        <button key={opt.id} onClick={handleVote} className="w-full text-left relative h-10 bg-white dark:bg-gray-700 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600 hover:border-brand-300 transition-colors group">
+                                            {hasVoted && (
+                                                <div className="absolute top-0 left-0 h-full bg-brand-100 dark:bg-brand-900/50 transition-all duration-500 ease-out" style={{ width: `${pct}%` }}></div>
+                                            )}
+                                            <div className="absolute inset-0 flex items-center justify-between px-4 z-10 text-sm font-medium text-gray-800 dark:text-gray-200">
+                                                <span>{opt.label}</span>
+                                                {hasVoted && <span className="font-bold">{pct}%</span>}
+                                            </div>
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                            <p className="text-center text-xs text-gray-500 dark:text-gray-400 mt-4">
+                                {hasVoted ? `Total votes: ${poll.totalVotes + 1}` : 'Vote to see results'}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="flex justify-center">
+                            <button 
+                                onClick={handleGeneratePoll}
+                                className="flex items-center gap-2 px-6 py-3 bg-brand-50 dark:bg-brand-900/20 text-brand-700 dark:text-brand-300 rounded-full font-bold hover:bg-brand-100 dark:hover:bg-brand-900/40 transition-colors"
+                            >
+                                <Sparkles size={18} />
+                                What do you think? Create a Poll
+                            </button>
+                        </div>
+                    )}
+                </div>
 
                 {/* Tags */}
                 {article.tags && (
