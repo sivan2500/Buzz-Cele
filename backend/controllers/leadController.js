@@ -38,46 +38,47 @@ const getLeadById = async (req, res) => {
   }
 };
 
-// @desc    Harvest new leads (Using TrendService)
+// @desc    Harvest new leads (Using TrendService) - HTTP Endpoint
 // @route   POST /api/leads/harvest
 const harvestLeads = async (req, res) => {
   try {
-    // 1. Fetch aggregated trends from RSS, Google, and Socials
+    const result = await runHarvestCycle();
+    res.status(201).json({ 
+        message: `Harvest complete. Added ${result.added} new leads.`, 
+        leads: result.leads 
+    });
+  } catch (error) {
+    console.error("Harvest Error:", error);
+    res.status(500).json({ message: "Failed to harvest leads: " + error.message });
+  }
+};
+
+// Internal function for CRON jobs (No req/res)
+const runHarvestCycle = async () => {
+    console.log('🚜 Starting Harvest Cycle...');
+    // 1. Fetch aggregated trends
     const freshTrends = await TrendService.aggregateTrends();
-
     const createdLeads = [];
-    let duplicateCount = 0;
+    let count = 0;
 
-    // 2. Save to database (avoiding direct duplicates based on title)
+    // 2. Save to database
     for (const trend of freshTrends) {
-      // Check if lead with same title already exists in DB
       const exists = await Lead.findOne({ title: trend.title });
-      
       if (!exists) {
         const lead = await Lead.create({
           ...trend,
           provenance: [{ 
               action: 'harvested', 
-              user: req.user ? req.user.name : 'System_Auto_Bot', 
+              user: 'System_Cron', 
               details: `Detected via ${trend.source}` 
           }]
         });
         createdLeads.push(lead);
-      } else {
-        duplicateCount++;
+        count++;
       }
     }
-
-    res.status(201).json({ 
-        message: `Harvest complete. Added ${createdLeads.length} new leads.`, 
-        duplicatesSkipped: duplicateCount,
-        leads: createdLeads 
-    });
-
-  } catch (error) {
-    console.error("Harvest Error:", error);
-    res.status(500).json({ message: "Failed to harvest leads: " + error.message });
-  }
+    console.log(`✅ Harvest Complete. ${count} new leads found.`);
+    return { added: count, leads: createdLeads };
 };
 
 // @desc    Generate Content Recipe (Mocking Gemini)
@@ -87,9 +88,6 @@ const generateContentRecipe = async (req, res) => {
     const lead = await Lead.findById(req.params.id);
     if (!lead) return res.status(404).json({ message: 'Lead not found' });
 
-    // Mock AI Generation delay
-    // In real app: const recipe = await geminiService.createRecipe(lead.title);
-    
     const mockRecipe = {
       suggestedTitle: `BREAKING: ${lead.title} - What You Need to Know`,
       metaDescription: `Everything we know about ${lead.title}. Exclusive details inside.`,
@@ -157,8 +155,8 @@ const autoPostLead = async (req, res) => {
             excerpt: generatedContent.excerpt,
             content: generatedContent.content,
             category: generatedContent.category || 'Celebrity',
-            authorName: 'BuzzCeleb Staff', // Default auto-author
-            imageUrl: `https://picsum.photos/800/600?random=${Math.floor(Math.random() * 1000)}`, // Placeholder
+            authorName: 'BuzzCeleb Staff', 
+            imageUrl: `https://picsum.photos/800/600?random=${Math.floor(Math.random() * 1000)}`,
             readTime: generatedContent.readTime,
             isBreaking: lead.score > 80,
             tags: generatedContent.seo.keywords,
@@ -194,6 +192,7 @@ module.exports = {
   getLeads,
   getLeadById,
   harvestLeads,
+  runHarvestCycle,
   generateContentRecipe,
   updateLeadStatus,
   autoPostLead

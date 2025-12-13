@@ -35,6 +35,22 @@ class SocialService {
     return results;
   }
 
+  /**
+   * Sends a system alert to admins (Console or Telegram/Slack)
+   * @param {string} message 
+   */
+  async sendAdminAlert(message) {
+      const timestamp = new Date().toISOString();
+      if (this.simulatedMode) {
+          console.log(`\n[ADMIN ALERT 🚨] ${timestamp}\n${message}\n`);
+          return Promise.resolve({ success: true, mode: 'simulated' });
+      }
+      
+      // Real implementation would go here (e.g., Slack Webhook)
+      console.log(`[ADMIN ALERT 🚨] ${message}`);
+      return Promise.resolve({ success: true });
+  }
+
   async postToTwitter(text, imageUrl) {
     if (this.simulatedMode) {
       console.log(`[Twitter] 🐦 Tweeting: ${text.substring(0, 50)}...`);
