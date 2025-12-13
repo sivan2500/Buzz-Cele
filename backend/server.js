@@ -19,7 +19,13 @@ const { runHarvestCycle } = require('./controllers/leadController');
 const SocialService = require('./services/socialService');
 
 dotenv.config();
-connectDB();
+
+// Connect to MongoDB only if URI is present
+if (process.env.MONGO_URI) {
+    connectDB();
+} else {
+    console.log("⚠️ MONGO_URI not found in .env. Skipping MongoDB connection (Hybrid mode or Supabase only).");
+}
 
 const app = express();
 
@@ -61,10 +67,16 @@ app.use('/', seoRoutes);
 app.post('/api/subscribe', async (req, res) => {
     const { email } = req.body;
     try {
-        const exists = await Subscriber.findOne({ email });
-        if (exists) return res.status(400).json({ message: 'Email already subscribed' });
-        await Subscriber.create({ email });
-        res.status(201).json({ message: 'Subscribed successfully' });
+        // Fallback or Supabase implementation needed if Mongo is off
+        if (Subscriber && process.env.MONGO_URI) {
+            const exists = await Subscriber.findOne({ email });
+            if (exists) return res.status(400).json({ message: 'Email already subscribed' });
+            await Subscriber.create({ email });
+            res.status(201).json({ message: 'Subscribed successfully' });
+        } else {
+             // Mock success if no DB for subscribers yet
+             res.status(201).json({ message: 'Subscribed successfully (Mock)' });
+        }
     } catch (error) {
         res.status(500).json({ message: 'Server error' });
     }
@@ -78,7 +90,11 @@ app.get('/', (req, res) => {
 cron.schedule('0 */4 * * *', async () => {
     console.log('⏰ Running scheduled harvest cycle...');
     try {
-        await runHarvestCycle();
+        if(process.env.MONGO_URI) {
+            await runHarvestCycle();
+        } else {
+            console.log('Skipping harvest cycle (No MongoDB configured)');
+        }
     } catch (err) {
         console.error('Scheduled harvest failed:', err);
         SocialService.sendAdminAlert(`❌ *CRON Job Failed*\n\n${err.message}`);

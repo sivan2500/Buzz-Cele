@@ -35,8 +35,10 @@ import { Sparkles, RefreshCw, Bookmark, ArrowLeft, X, TrendingUp, ArrowRight, Lo
 
 // Safe Environment variable access
 const getApiUrl = () => {
-  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const meta = import.meta as any;
+  if (typeof meta !== 'undefined' && meta.env && meta.env.VITE_API_URL) {
+    return meta.env.VITE_API_URL;
   }
   return 'http://localhost:5000';
 };
