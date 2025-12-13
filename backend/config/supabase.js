@@ -4,16 +4,18 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+// Use environment variables or fallback to provided credentials
+const supabaseUrl = process.env.SUPABASE_URL || 'https://qxqctubmmjckznyfsnvz.supabase.co';
+// Note: Usually the backend uses the SERVICE_KEY for admin privileges, 
+// but we will use the provided ANON_KEY for integration purposes. 
+// RLS policies on Supabase should be configured to allow necessary public access.
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4cWN0dWJtbWpja3pueWZzbnZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzOTA5MzgsImV4cCI6MjA4MDk2NjkzOH0.sN39nv8iIkZxm9HDlNt5tKmtmYvA7JCKHTvbEKWkWXo';
 
-// Warn if keys are missing but don't crash immediately to allow build processes
 if (!supabaseUrl || !supabaseKey) {
-  console.warn('⚠️ Supabase credentials missing in .env. Ensure SUPABASE_URL and SUPABASE_SERVICE_KEY are set.');
+  console.warn('⚠️ Supabase credentials missing. Ensure SUPABASE_URL and SUPABASE_SERVICE_KEY are set.');
 }
 
 // Initialize Supabase client
-// We use the service_role key for the backend to bypass RLS policies when necessary.
 const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     autoRefreshToken: false,

@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Article, User, Poll } from '../types';
-import { Clock, User as UserIcon, Calendar, Share2, MessageCircle, Bookmark, ArrowLeft, Eye, Tag, Facebook, Twitter, Linkedin, Link as LinkIcon, BarChart2, Loader2, Sparkles } from 'lucide-react';
+import { Clock, User as UserIcon, Calendar, Share2, MessageCircle, Bookmark, ArrowLeft, Eye, Tag, Facebook, Twitter, Linkedin, Link as LinkIcon, BarChart2, Loader2, Sparkles, Send } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import Button from './Button';
 import Sidebar from './Sidebar';
@@ -49,6 +49,16 @@ interface ArticleDetailProps {
   onArticleClick: (id: string) => void;
 }
 
+interface Comment {
+    _id: string;
+    text: string;
+    createdAt: string;
+    user: {
+        name: string;
+        avatarUrl?: string;
+    };
+}
+
 const ArticleDetail: React.FC<ArticleDetailProps> = ({
   articleId,
   onBack,
@@ -69,6 +79,13 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
   const [isPollLoading, setIsPollLoading] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
 
+  // Comment State
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [isPostingComment, setIsPostingComment] = useState(false);
+  const [loadingComments, setLoadingComments] = useState(false);
+
+  // Fetch Article Data
   useEffect(() => {
     const fetchArticle = async () => {
       setLoading(true);
@@ -142,6 +159,26 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
     window.scrollTo(0, 0);
   }, [articleId]);
 
+  // Fetch Comments when articleId changes
+  useEffect(() => {
+      const fetchComments = async () => {
+          setLoadingComments(true);
+          try {
+              const res = await fetch(`${API_URL}/api/articles/${articleId}/comments`);
+              if (res.ok) {
+                  const data = await res.json();
+                  setComments(data);
+              }
+          } catch (err) {
+              console.error("Failed to fetch comments", err);
+          } finally {
+              setLoadingComments(false);
+          }
+      };
+      
+      if (articleId) fetchComments();
+  }, [articleId]);
+
   const handleGeneratePoll = async () => {
     if (!article) return;
     setIsPollLoading(true);
@@ -151,6 +188,35 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
   };
 
   const handleVote = () => setHasVoted(true);
+
+  const handlePostComment = async () => {
+      if (!commentText.trim() || !currentUser) return;
+      
+      setIsPostingComment(true);
+      try {
+          const token = localStorage.getItem('buzzCelebToken');
+          const res = await fetch(`${API_URL}/api/articles/${articleId}/comments`, {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({ text: commentText })
+          });
+
+          if (res.ok) {
+              const newComment = await res.json();
+              setComments([newComment, ...comments]);
+              setCommentText('');
+          } else {
+              alert('Failed to post comment. Please try again.');
+          }
+      } catch (err) {
+          console.error("Error posting comment", err);
+      } finally {
+          setIsPostingComment(false);
+      }
+  };
 
   if (loading) {
       return (
@@ -171,8 +237,6 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
 
   return (
     <div className="bg-white dark:bg-gray-950 min-h-screen animate-in fade-in duration-300">
-      
-      {/* Sticky Header / Progress (Optional, simplified for now) */}
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
          {/* Breadcrumbs & Back */}
@@ -332,21 +396,69 @@ const ArticleDetail: React.FC<ArticleDetailProps> = ({
                     </div>
                 )}
 
-                {/* Comments Placeholer (Reusing logic from card but expanded) */}
+                {/* Real-time Comments Section */}
                 <div className="bg-gray-50 dark:bg-gray-900/50 rounded-xl p-6 border border-gray-100 dark:border-gray-800 mb-12">
-                    <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-6 flex items-center gap-2">
-                        <MessageCircle /> Conversation
-                    </h3>
-                    <div className="text-center py-8">
-                        <p className="text-gray-500 dark:text-gray-400 mb-4">Join the discussion on this story.</p>
+                    <div className="flex items-center justify-between mb-6">
+                        <h3 className="font-bold text-xl text-gray-900 dark:text-white flex items-center gap-2">
+                            <MessageCircle /> Conversation ({comments.length})
+                        </h3>
+                    </div>
+                    
+                    <div className="mb-8">
                         {!currentUser ? (
-                            <Button onClick={onOpenAuthModal}>Sign in to Comment</Button>
+                            <div className="text-center py-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                                <p className="text-gray-500 dark:text-gray-400 mb-3">Join the discussion on this story.</p>
+                                <Button onClick={onOpenAuthModal}>Sign in to Comment</Button>
+                            </div>
                         ) : (
-                            <textarea 
-                                className="w-full p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none" 
-                                placeholder="What do you think? Leave a comment..."
-                                rows={3}
-                            ></textarea>
+                            <div className="flex gap-3">
+                                <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-10 h-10 rounded-full border border-gray-200 dark:border-gray-700" />
+                                <div className="flex-1">
+                                    <textarea 
+                                        value={commentText}
+                                        onChange={(e) => setCommentText(e.target.value)}
+                                        className="w-full p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:ring-2 focus:ring-brand-500 outline-none text-sm min-h-[100px] resize-y" 
+                                        placeholder="What do you think? Leave a comment..."
+                                    ></textarea>
+                                    <div className="flex justify-end mt-2">
+                                        <Button 
+                                            onClick={handlePostComment} 
+                                            disabled={isPostingComment || !commentText.trim()}
+                                            className="px-6"
+                                        >
+                                            {isPostingComment ? <Loader2 className="animate-spin" size={16} /> : <><Send size={16} className="mr-2" /> Post Comment</>}
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Comments List */}
+                    <div className="space-y-6">
+                        {loadingComments ? (
+                            <div className="flex justify-center py-4">
+                                <Loader2 className="animate-spin text-gray-400" />
+                            </div>
+                        ) : comments.length > 0 ? (
+                            comments.map((comment) => (
+                                <div key={comment._id} className="flex gap-3 animate-in fade-in slide-in-from-bottom-2">
+                                    <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden shrink-0">
+                                        <img src={comment.user?.avatarUrl || `https://ui-avatars.com/api/?name=${comment.user?.name || 'User'}&background=random`} alt={comment.user?.name} className="w-full h-full object-cover" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="font-bold text-gray-900 dark:text-white text-sm">{comment.user?.name || 'Anonymous'}</span>
+                                            <span className="text-xs text-gray-500 dark:text-gray-400">{formatDistanceToNow(new Date(comment.createdAt))} ago</span>
+                                        </div>
+                                        <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed bg-white dark:bg-gray-800 p-3 rounded-r-lg rounded-bl-lg shadow-sm border border-gray-100 dark:border-gray-700 inline-block">
+                                            {comment.text}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <p className="text-center text-gray-500 dark:text-gray-400 italic py-4">No comments yet. Be the first to start the gossip!</p>
                         )}
                     </div>
                 </div>

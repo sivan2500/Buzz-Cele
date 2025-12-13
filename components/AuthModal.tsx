@@ -1,8 +1,20 @@
 
 import React, { useState } from 'react';
-import { X, Mail, Lock, User, ArrowRight, Github, Camera, Upload } from 'lucide-react';
+import { X, Mail, Lock, User, ArrowRight, Github, Camera, Upload, AlertCircle } from 'lucide-react';
 import Button from './Button';
 import { User as UserType } from '../types';
+
+// Safe Environment variable access
+const getApiUrl = () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const meta = import.meta as any;
+  if (typeof meta !== 'undefined' && meta.env && meta.env.VITE_API_URL) {
+    return meta.env.VITE_API_URL;
+  }
+  return 'http://localhost:5000';
+};
+
+const API_URL = getApiUrl();
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -13,6 +25,7 @@ interface AuthModalProps {
 const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
   const [mode, setMode] = useState<'signin' | 'register'>('signin');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // Form States
   const [email, setEmail] = useState('');
@@ -46,6 +59,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setError(null);
 
     try {
       let finalAvatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`;
@@ -53,24 +67,49 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
       // If registering and user uploaded a file, convert to base64
       if (mode === 'register' && avatarFile) {
         finalAvatarUrl = await fileToBase64(avatarFile);
-      } else if (mode === 'register' && !avatarFile) {
-         // Keep default generated avatar
-      } else {
-         // Login mode - usually fetch from backend, but for mock we generate based on email
-         finalAvatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`;
       }
 
-      // Simulate API call
-      setTimeout(() => {
-        const mockUser: UserType = {
-          id: 'user-' + Date.now(),
-          name: mode === 'register' ? name : 'Gossip Insider',
-          email: email,
-          avatarUrl: finalAvatarUrl,
-          isPremium: false
+      const endpoint = mode === 'signin' ? '/api/auth/login' : '/api/auth/register';
+      const payload = mode === 'signin' 
+        ? { email, password } 
+        : { name, email, password, avatarUrl: finalAvatarUrl };
+
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Authentication failed');
+      }
+
+      if (mode === 'register') {
+        // Registration successful
+        alert(data.message || 'Registration successful! Please login.');
+        setMode('signin');
+        setIsLoading(false);
+      } else {
+        // Login successful
+        const loggedInUser: UserType = {
+          id: data._id || data.id,
+          name: data.name,
+          email: data.email,
+          avatarUrl: data.avatarUrl,
+          isPremium: data.isPremium,
+          // Include token if needed for future authenticated requests
         };
         
-        onLogin(mockUser);
+        // Store token in localStorage for future requests
+        if (data.token) {
+            localStorage.setItem('buzzCelebToken', data.token);
+        }
+
+        onLogin(loggedInUser);
         setIsLoading(false);
         // Reset states
         setEmail('');
@@ -79,9 +118,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
         setAvatarFile(null);
         setAvatarPreview(null);
         onClose();
-      }, 1500);
-    } catch (error) {
-      console.error("Error processing registration", error);
+      }
+
+    } catch (err: any) {
+      console.error("Auth Error", err);
+      setError(err.message);
       setIsLoading(false);
     }
   };
@@ -115,6 +156,13 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
         </div>
 
         <div className="p-8">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900 rounded-lg flex items-start gap-2">
+              <AlertCircle className="text-red-600 dark:text-red-400 shrink-0 mt-0.5" size={16} />
+              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             
             {/* Avatar Upload for Register Mode */}
@@ -242,7 +290,10 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }) => {
            <p className="text-sm text-gray-600 dark:text-gray-400">
              {mode === 'signin' ? "Don't have an account? " : "Already have an account? "}
              <button 
-               onClick={() => setMode(mode === 'signin' ? 'register' : 'signin')}
+               onClick={() => {
+                   setMode(mode === 'signin' ? 'register' : 'signin');
+                   setError(null);
+               }}
                className="font-bold text-brand-600 dark:text-brand-400 hover:underline"
              >
                {mode === 'signin' ? 'Sign up' : 'Sign in'}
